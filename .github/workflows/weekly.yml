@@ -1,0 +1,35 @@
+name: weekly-draft
+on:
+  schedule:
+    - cron: "0 1 * * 1"      # Sunday 18:00 America/Los_Angeles
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run dhd assemble
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: draft/issue-${{ github.run_number }}
+          title: "Draft issue"
+          commit-message: "weekly draft"
+          body: |
+            Automated draft. Review pass:
+            - cut the dull ones
+            - add asides (~8)
+            - fill Listen / Read / Watch
+            Merging does not publish. Run `dhd publish` after sending.
+          add-paths: drafts/

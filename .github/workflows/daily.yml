@@ -1,0 +1,23 @@
+name: daily-ingest
+on:
+  schedule:
+    - cron: "0 13 * * *"     # 06:00 America/Los_Angeles
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      FEEDBIN_USER: ${{ secrets.FEEDBIN_USER }}
+      FEEDBIN_PASSWORD: ${{ secrets.FEEDBIN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run dhd ingest
+      - run: uv run dhd triage 800
+      - run: uv run dhd stats
