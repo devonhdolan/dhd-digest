@@ -26,22 +26,26 @@ def _save_state(key: str, last_id: str):
             (key, str(last_id)))
 
 
-def collect() -> list[dict]:
-    """Return raw link dicts from whichever backend is configured."""
+def collect() -> tuple[list[dict], str, str | int | None]:
+    """Return raw link dicts from whichever backend is configured, plus the
+    checkpoint to save once those links are durably written to candidates.
+
+    Fetching never advances fetch_state itself - if the run dies before the
+    candidates land, the next run must see the same messages again rather
+    than silently skipping them.
+    """
     if os.environ.get("FEEDBIN_USER"):
         since = _state("feedbin")
         entries = feedbin.fetch_entries(since_id=since)
         links = [l for e in entries for l in feedbin.extract_links(e)]
-        if entries:
-            _save_state("feedbin", entries[-1]["id"])
-        return links
+        checkpoint = entries[-1]["id"] if entries else None
+        return links, "feedbin", checkpoint
 
     since = int(_state("imap") or 0)
     msgs = imap.fetch_messages(since_uid=since)
     links = [l for m in msgs for l in imap.extract_links(m)]
-    if msgs:
-        _save_state("imap", max(m["uid"] for m in msgs))
-    return links
+    checkpoint = max((m["uid"] for m in msgs), default=None)
+    return links, "imap", checkpoint
 
 
 def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str]:
@@ -72,11 +76,12 @@ def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str]:
 
 
 def run():
-    raw = collect()
+    raw, source_key, checkpoint = collect()
     print(f"fetched {len(raw)} raw anchors")
 
     merged: dict[str, dict] = {}
     sources = defaultdict(set)
+    enriched: list[tuple[dict, str, str]] = []
     with httpx.Client(follow_redirects=True, timeout=8.0) as client:
         for item in raw:
             url = unwrap(item["raw_url"], client) if RESOLVE_REDIRECTS else item["raw_url"]
@@ -100,16 +105,30 @@ def run():
         fresh = [v for k, v in merged.items() if k not in known]
         print(f"{len(fresh)} new after dedup ({len(known)} already seen)")
 
+        for row in fresh:
+            headline, excerpt = enrich(row["canonical_url"], client)
+            enriched.append((row, headline, excerpt))
+
+    # Everything from here is one transaction: candidates land and the
+    # checkpoint advances together, or neither does. A crash mid-loop must
+    # not advance past messages whose links never made it into the table.
+    with conn().transaction():
         with conn().cursor() as cur:
-            for row in fresh:
-                headline, excerpt = enrich(row["canonical_url"], client)
+            for row, headline, excerpt in enriched:
                 cur.execute(
                     """INSERT INTO candidates
                        (canonical_url, raw_url, domain, anchor_text, context,
                         headline, excerpt, sources)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                       ON CONFLICT (canonical_url) DO NOTHING""",
+                       ON CONFLICT (canonical_url) DO UPDATE
+                       SET sources = (
+                           SELECT ARRAY(
+                               SELECT DISTINCT unnest(
+                                   candidates.sources || EXCLUDED.sources))
+                       )""",
                     (row["canonical_url"], row["raw_url"], row["domain"],
                      row["anchor_text"], row["context"], headline, excerpt,
                      sorted(sources[row["canonical_url"]])))
+        if checkpoint is not None:
+            _save_state(source_key, checkpoint)
     print("ingest complete")
