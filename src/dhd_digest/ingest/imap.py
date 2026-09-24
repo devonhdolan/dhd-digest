@@ -56,7 +56,7 @@ def extract_links(msg: dict) -> list[dict]:
     for node in tree.css("a[href]"):
         parent = node.parent
         results.append({
-            "raw_url": node.attributes.get("href", ""),
+            "raw_url": node.attributes.get("href") or "",
             "anchor_text": (node.text() or "").strip()[:200],
             "context": ((parent.text() or "").strip()[:400] if parent else ""),
             "source": msg["sender"],

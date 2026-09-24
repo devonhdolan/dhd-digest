@@ -12,8 +12,10 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-      FEEDBIN_USER: ${{ secrets.FEEDBIN_USER }}
-      FEEDBIN_PASSWORD: ${{ secrets.FEEDBIN_PASSWORD }}
+      IMAP_HOST: ${{ secrets.IMAP_HOST }}
+      IMAP_USER: ${{ secrets.IMAP_USER }}
+      IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+      IMAP_FOLDER: ${{ secrets.IMAP_FOLDER }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

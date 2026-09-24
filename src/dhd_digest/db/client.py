@@ -11,7 +11,10 @@ def conn():
     global _conn
     if _conn is None or _conn.closed:
         _conn = psycopg.connect(DATABASE_URL, autocommit=True)
-        register_vector(_conn)
+        try:
+            register_vector(_conn)
+        except psycopg.ProgrammingError:
+            pass  # vector extension not created yet; init_db() will create it
     return _conn
 
 

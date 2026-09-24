@@ -41,7 +41,7 @@ def extract_links(entry: dict) -> list[dict]:
     source = entry.get("feed_id")
     results = []
     for node in tree.css("a[href]"):
-        href = node.attributes.get("href", "")
+        href = node.attributes.get("href") or ""
         anchor = (node.text() or "").strip()
         parent = node.parent
         context = (parent.text() or "").strip()[:400] if parent else anchor

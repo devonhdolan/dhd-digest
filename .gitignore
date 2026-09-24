@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 drafts/
 .pytest_cache/
+.neon
+.env.local
+.DS_Store

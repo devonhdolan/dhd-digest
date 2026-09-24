@@ -25,13 +25,25 @@ JUNK_PATTERNS = re.compile(
     r"/feed\.xml|\.rss$|substack\.com/(app|signup|profile)|"
     r"apps\.apple\.com/.*app-store-redirect)", re.I)
 
-# Newsletter link wrappers that hide the real destination.
+# Newsletter link wrappers that hide the real destination. Exact hosts for
+# one-off ESPs, plus patterns for ESPs that send from a per-customer or
+# per-pool subdomain (Substack's mg1/mg2/mg-d0/... Mailgun pools, Sailthru
+# and Mailgun's link.<sender>.com convention, Campaign Monitor's cmailNN.com).
 REDIRECT_HOSTS = {
-    "link.mail.beehiiv.com", "links.substack.com", "email.mg1.substack.com",
+    "link.mail.beehiiv.com", "links.substack.com", "email.beehiivstatus.com",
     "click.convertkit-mail.com", "t.co", "lnkd.in", "trk.klclick.com",
     "clicks.aweber.com", "cl.s7.exct.net", "url.us.m.mimecastprotect.com",
     "tracking.tldrnewsletter.com", "e.customeriomail.com",
 }
+REDIRECT_HOST_PATTERNS = (
+    re.compile(r"^email(\.mg[\w-]*)?\.substack\.com$"),
+    re.compile(r"^links?\.[\w-]+\.com$"),
+    re.compile(r"^[\w-]+\.cmail\d+\.com$"),
+)
+
+
+def is_redirect_host(host: str) -> bool:
+    return host in REDIRECT_HOSTS or any(p.match(host) for p in REDIRECT_HOST_PATTERNS)
 
 
 def unwrap(url: str, client: httpx.Client | None = None, timeout: float = 6.0) -> str:
@@ -41,8 +53,10 @@ def unwrap(url: str, client: httpx.Client | None = None, timeout: float = 6.0) -
     resolve_redirects=False in the caller if that bothers you; links from
     those hosts will then stay wrapped and mostly get filtered as junk.
     """
+    if isinstance(url, bytes):
+        url = url.decode("utf-8", "replace")
     host = urlparse(url).netloc.lower()
-    if host not in REDIRECT_HOSTS:
+    if not is_redirect_host(host):
         return url
     close = client is None
     client = client or httpx.Client(follow_redirects=True, timeout=timeout)
