@@ -10,6 +10,7 @@ from ..config import (ANTHROPIC_API_KEY, BLURB_MAX_WORDS_BY_SECTION,
 from ..corpus.embed import candidate_text, embed
 from ..corpus.search import best_section_prior, neighbors_by_section
 from ..db.client import conn, query
+from ..validation import TriageJudgment, validate_triage_judgment
 from .prompts import SYSTEM, TRIAGE_TOOL, build_user_message
 
 _client = None
@@ -23,7 +24,7 @@ def client():
 
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(min=2, max=30))
-def judge(candidate: dict, neighbors: dict, prior: str) -> dict:
+def judge(candidate: dict, neighbors: dict, prior: str) -> TriageJudgment:
     resp = client().messages.create(
         model=TRIAGE_MODEL,
         max_tokens=600,
@@ -35,7 +36,7 @@ def judge(candidate: dict, neighbors: dict, prior: str) -> dict:
     )
     for block in resp.content:
         if block.type == "tool_use":
-            return block.input
+            return validate_triage_judgment(block.input)
     raise ValueError("no tool_use block returned")
 
 
@@ -70,14 +71,14 @@ def run(limit: int = 500):
                 print(f"  skip {cand['canonical_url']}: {exc}")
                 continue
 
-            score = float(out["keep_score"])
+            score = float(out.keep_score)
             if len(cand.get("sources") or []) > 1:
                 score += CONVERGENCE_BOOST * (len(cand["sources"]) - 1)
 
             cur.execute(
                 """UPDATE candidates SET section=%s, keep_score=%s, blurb=%s,
                        reasoning=%s, embedding=%s, triaged_at=%s WHERE id=%s""",
-                (out["section"], min(score, 10.0),
-                 trim_blurb(out["blurb"], out["section"]),
-                 out["reasoning"], vec, datetime.now(timezone.utc), cand["id"]))
+                (out.section, min(score, 10.0),
+                 trim_blurb(out.blurb, out.section),
+                 out.reasoning, vec, datetime.now(timezone.utc), cand["id"]))
     print(f"triaged {len(cands)} candidates")

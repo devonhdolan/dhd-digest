@@ -8,6 +8,7 @@ from ..config import (ANTHROPIC_API_KEY, EDITOR_MODEL, MIN_KEEP_SCORE,
                       SECTION_MIX, SECTIONS, TARGET_LINKS_PER_ISSUE)
 from ..corpus.search import style_examples
 from ..db.client import conn, query
+from ..validation import validate_section_selection
 from .prompts import SECTION_TOOL, SYSTEM, build_user_message
 
 _client = None
@@ -66,14 +67,11 @@ def edit_section(section: str, target: int) -> list[dict]:
         messages=[{"role": "user", "content": build_user_message(
             section, items, style_examples(section, 30), target)}],
     )
-    chosen = next(b.input for b in resp.content if b.type == "tool_use")
+    raw = next(b.input for b in resp.content if b.type == "tool_use")
     by_id = {i["id"]: i for i in items}
-    out = []
-    for entry in chosen["items"][:target]:
-        base = by_id.get(entry["id"])
-        if base:
-            out.append({**base, "blurb": entry["blurb"], "section": section})
-    return out
+    chosen = validate_section_selection(raw, pool_ids=set(by_id), target=target)
+    return [{**by_id[entry.id], "blurb": entry.blurb, "section": section}
+            for entry in chosen]
 
 
 def tag_for(domain: str) -> str:
@@ -93,7 +91,13 @@ def next_issue_number() -> int:
 def build() -> dict:
     issue = next_issue_number()
     q = quotas()
-    sections = {s: edit_section(s, q[s]) for s in SECTIONS}
+    sections = {}
+    for s in SECTIONS:
+        try:
+            sections[s] = edit_section(s, q[s])
+        except Exception as exc:          # one bad section shouldn't sink the draft
+            print(f"  {s}: section edit failed, leaving empty ({exc})")
+            sections[s] = []
     for items in sections.values():
         for it in items:
             it["tag"] = tag_for(it["domain"])
