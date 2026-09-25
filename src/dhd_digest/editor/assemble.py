@@ -21,8 +21,23 @@ def client():
 
 
 def quotas(total: int = TARGET_LINKS_PER_ISSUE) -> dict[str, int]:
-    """Hold the mix the archive held for five years: 37/22/21/20."""
-    return {s: max(1, math.floor(total * SECTION_MIX[s])) for s in SECTIONS}
+    """Hold the mix the archive held for five years: 37/22/21/20.
+
+    Largest-remainder allocation: floor each section's exact share, then
+    hand the leftover slots (total minus the sum of floors) to whichever
+    sections had the biggest fractional remainder. Plain floor()-per-section
+    almost always under-allocates by a few links; this guarantees the
+    result sums to exactly `total`.
+    """
+    exact = {s: total * SECTION_MIX[s] for s in SECTIONS}
+    result = {s: math.floor(n) for s, n in exact.items()}
+
+    remainder = total - sum(result.values())
+    for section in sorted(SECTIONS, key=lambda s: exact[s] - result[s],
+                           reverse=True)[:remainder]:
+        result[section] += 1
+
+    return result
 
 
 def pool(section: str, limit: int) -> list[dict]:
