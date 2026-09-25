@@ -31,5 +31,6 @@ jobs:
             - cut the dull ones
             - add asides (~8)
             - fill Listen / Read / Watch
-            Merging does not publish. Run `dhd publish` after sending.
+            Merging does not publish. After sending, run `dhd publish <issue-number>`
+            (the number is in the drafts/issue-N.md filename above).
           add-paths: drafts/

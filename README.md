@@ -91,8 +91,11 @@ Review the PR. Three jobs, ~15 minutes:
 2. Add asides to the ~8 that deserve one. This is the only part a model can't do.
 3. Fill in Listen / Read / Watch.
 
-Merging the PR does not publish. Run `dhd publish` after the issue actually goes
-out — that's what marks the links as used and adds them to `seen_urls`.
+Merging the PR does not publish. Run `dhd publish <issue-number>` after the
+issue actually goes out — that's what marks the links as used and adds them
+to `seen_urls`. It reads `drafts/issue-N.md` directly, so whatever you cut
+or edited during review is exactly what gets published; it never re-runs
+the editor model.
 
 ## Measuring it
 

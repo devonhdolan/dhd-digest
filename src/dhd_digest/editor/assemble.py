@@ -1,6 +1,7 @@
 """Weekly assembly: pick, edit per section, enforce the historical mix, render."""
 import math
 from datetime import date
+from pathlib import Path
 
 import anthropic
 
@@ -8,6 +9,7 @@ from ..config import (ANTHROPIC_API_KEY, EDITOR_MODEL, MIN_KEEP_SCORE,
                       SECTION_MIX, SECTIONS, TARGET_LINKS_PER_ISSUE)
 from ..corpus.search import style_examples
 from ..db.client import conn, query
+from ..render.markdown import parse_published
 from ..validation import validate_section_selection
 from .prompts import SECTION_TOOL, SYSTEM, build_user_message
 
@@ -104,14 +106,29 @@ def build() -> dict:
     return {"issue": issue, "date": date.today(), "sections": sections}
 
 
-def mark_used(draft: dict):
-    """Only call this once a draft is actually published."""
-    ids = [it["id"] for items in draft["sections"].values() for it in items]
+def publish(issue: int, drafts_dir: str = "drafts") -> int:
+    """Mark exactly what survived review as published.
+
+    Reads the (possibly hand-edited) drafts/issue-N.md directly rather
+    than recomputing a selection - the editor model never runs here, so
+    what gets marked used always matches what a human actually reviewed
+    and sent, cuts included. Call this once, after the issue has actually
+    gone out.
+    """
+    path = Path(drafts_dir) / f"issue-{issue}.md"
+    items = parse_published(path)
+    ids = [it["id"] for it in items]
+    if not ids:
+        print(f"no surviving items found in {path} - nothing to publish")
+        return 0
+
     with conn().cursor() as cur:
         cur.execute("UPDATE candidates SET used_in_issue=%s WHERE id = ANY(%s)",
-                    (draft["issue"], ids))
+                    (issue, ids))
         cur.execute(
             """INSERT INTO seen_urls (canonical_url, first_seen_on, issue)
                SELECT canonical_url, %s, %s FROM candidates WHERE id = ANY(%s)
                ON CONFLICT DO NOTHING""",
-            (draft["date"], draft["issue"], ids))
+            (date.today(), issue, ids))
+    print(f"published issue {issue}: {len(ids)} links marked used")
+    return len(ids)

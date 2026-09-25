@@ -5,7 +5,7 @@
   ingest        daily: fetch feeds/mail, canonicalize, dedup, store candidates
   triage        daily: score untriaged candidates against the archive
   assemble      weekly: build drafts/issue-NNN.md
-  publish       mark the current draft's links as published
+  publish N     mark issue N's surviving (reviewed) links as published
   stats         quick health check
 """
 import sys
@@ -32,9 +32,11 @@ def main():
         from .render.markdown import write
         write(build())
     elif cmd == "publish":
-        from .editor.assemble import build, mark_used
-        mark_used(build())
-        print("marked published")
+        if len(sys.argv) < 3:
+            print("usage: dhd publish <issue-number>")
+            sys.exit(1)
+        from .editor.assemble import publish
+        publish(int(sys.argv[2]))
     elif cmd == "stats":
         from .db.client import query
         for label, sql in [
