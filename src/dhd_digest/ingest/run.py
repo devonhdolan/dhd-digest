@@ -1,13 +1,16 @@
 """Daily ingestion: fetch, canonicalize, dedup, store."""
 import os
 from collections import defaultdict
+from datetime import date, datetime
 
 import httpx
 from selectolax.parser import HTMLParser
 
+from ..config import MAX_ARTICLE_AGE_DAYS
 from ..db.client import conn, query
 from . import feedbin, imap
-from .normalize import canonicalize, domain_of, unwrap
+from .normalize import (canonicalize, domain_of, is_stale, is_tracker_url,
+                        unwrap, url_date)
 
 RESOLVE_REDIRECTS = os.environ.get("RESOLVE_REDIRECTS", "true").lower() == "true"
 
@@ -48,8 +51,22 @@ def collect() -> tuple[list[dict], str, str | int | None]:
     return links, "imap", checkpoint
 
 
-def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str]:
-    """Fetch headline and opening text. Failure is fine - triage handles blanks."""
+def published_date(tree: HTMLParser) -> date | None:
+    for sel in ('meta[property="article:published_time"]',
+                'meta[name="article:published_time"]', 'meta[itemprop="datePublished"]'):
+        node = tree.css_first(sel)
+        value = node.attributes.get("content") if node else None
+        if value:
+            try:
+                return datetime.fromisoformat(value.strip().replace("Z", "+00:00")).date()
+            except ValueError:
+                continue
+    return None
+
+
+def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str, date | None]:
+    """Fetch headline, opening text and publish date. Failure is fine -
+    triage handles blanks, and an unknown date counts as fresh."""
     try:
         r = client.get(canonical_url, timeout=8.0)
         tree = HTMLParser(r.text)
@@ -70,9 +87,9 @@ def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str]:
         if not desc:
             p = tree.css_first("article p") or tree.css_first("p")
             desc = (p.text() if p else "")[:500]
-        return title.strip()[:300], desc.strip()[:800]
+        return title.strip()[:300], desc.strip()[:800], published_date(tree)
     except Exception:
-        return "", ""
+        return "", "", None
 
 
 def run():
@@ -85,8 +102,10 @@ def run():
     with httpx.Client(follow_redirects=True, timeout=8.0) as client:
         for item in raw:
             url = unwrap(item["raw_url"], client) if RESOLVE_REDIRECTS else item["raw_url"]
+            if is_tracker_url(url):       # couldn't resolve it; never publish a tracker
+                continue
             cu = canonicalize(url)
-            if not cu:
+            if not cu or is_stale(url_date(cu)):
                 continue
             sources[cu].add(item.get("source_title") or item.get("source") or "unknown")
             if cu not in merged:
@@ -105,9 +124,14 @@ def run():
         fresh = [v for k, v in merged.items() if k not in known]
         print(f"{len(fresh)} new after dedup ({len(known)} already seen)")
 
+        stale = 0
         for row in fresh:
-            headline, excerpt = enrich(row["canonical_url"], client)
+            headline, excerpt, published = enrich(row["canonical_url"], client)
+            if is_stale(published):
+                stale += 1
+                continue
             enriched.append((row, headline, excerpt))
+        print(f"{stale} dropped as older than {MAX_ARTICLE_AGE_DAYS} days")
 
     # Everything from here is one transaction: candidates land and the
     # checkpoint advances together, or neither does. A crash mid-loop must
