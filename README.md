@@ -28,6 +28,7 @@ feeds + newsletter inbox
 | Tech items that are fundraises | 52.5% | `triage/prompts.py` section brief |
 | Entertainment items that are fundraises | 1.0% | same |
 | URLs ever repeated | 102 of 29,819 | `seen_urls`, seeded at load |
+| Links from one domain in one section of an issue, p90 | 3 overall; per domain from the archive | `config.DOMAIN_CAP_DEFAULT`, `editor/assemble.py:domain_caps` |
 | Links carrying an aside | 5.4% (~8/issue) | left to the human pass |
 | Domains tagged inconsistently | 318 of 386 | `data/source_tags.csv` |
 

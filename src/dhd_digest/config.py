@@ -32,6 +32,19 @@ BLURB_MAX_WORDS_BY_SECTION = {
 
 TARGET_LINKS_PER_ISSUE = 150
 MIN_KEEP_SCORE = 6
+
+# Freshness. Newsletter footers and "popular posts" blocks link years-old
+# pieces; drop anything whose URL or page metadata dates it past this.
+MAX_ARTICLE_AGE_DAYS = 45
+# A weekly issue draws on the last week and a bit of candidates, not every
+# unused candidate ever ingested.
+CANDIDATE_MAX_AGE_DAYS = 10
+
+# Most links a single domain may take in one section of one issue. Per-domain
+# caps come from the archive (p90 per section-issue, so deadline.com still gets
+# its ~8 in Entertainment); domains the archive never saw get this default,
+# which is also the archive-wide p90.
+DOMAIN_CAP_DEFAULT = 3
 NEIGHBORS_PER_SECTION = 20
 
 # Boost for links that showed up in more than one source that week.

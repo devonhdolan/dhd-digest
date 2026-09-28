@@ -5,10 +5,12 @@ from pathlib import Path
 
 import anthropic
 
-from ..config import (ANTHROPIC_API_KEY, EDITOR_MODEL, MIN_KEEP_SCORE,
+from ..config import (ANTHROPIC_API_KEY, CANDIDATE_MAX_AGE_DAYS,
+                      DOMAIN_CAP_DEFAULT, EDITOR_MODEL, MIN_KEEP_SCORE,
                       SECTION_MIX, SECTIONS, TARGET_LINKS_PER_ISSUE)
 from ..corpus.search import style_examples
 from ..db.client import conn, query
+from ..ingest.normalize import is_stale, is_tracker_url, url_date
 from ..render.markdown import parse_published
 from ..validation import validate_section_selection
 from .prompts import SECTION_TOOL, SYSTEM, build_user_message
@@ -43,16 +45,48 @@ def quotas(total: int = TARGET_LINKS_PER_ISSUE) -> dict[str, int]:
     return result
 
 
+def domain_caps(section: str) -> dict[str, int]:
+    """p90 links-per-issue for each domain in this section of the archive."""
+    rows = query(
+        """SELECT domain, percentile_disc(0.9) WITHIN GROUP (ORDER BY n)
+           FROM (SELECT issue, domain, count(*) AS n FROM historical_links
+                 WHERE section = %s GROUP BY issue, domain) per_issue
+           GROUP BY domain""",
+        (section,))
+    return {d: max(int(n), DOMAIN_CAP_DEFAULT) for d, n in rows}
+
+
+def cap_per_domain(items: list[dict], caps: dict[str, int], limit: int) -> list[dict]:
+    """Walk items best-first, keeping at most caps[domain] from each domain."""
+    taken: dict[str, int] = {}
+    out = []
+    for it in items:
+        d = it["domain"]
+        if taken.get(d, 0) >= caps.get(d, DOMAIN_CAP_DEFAULT):
+            continue
+        taken[d] = taken.get(d, 0) + 1
+        out.append(it)
+        if len(out) == limit:
+            break
+    return out
+
+
 def pool(section: str, limit: int) -> list[dict]:
+    # Over-fetch: the domain cap and the tracker/stale filters below cut some.
     rows = query(
         """SELECT id, blurb, domain, keep_score, canonical_url
            FROM candidates
            WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL
              AND section = %s AND keep_score >= %s
+             AND first_seen_at > now() - make_interval(days => %s)
            ORDER BY keep_score DESC LIMIT %s""",
-        (section, MIN_KEEP_SCORE, limit))
-    return [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url"], r))
-            for r in rows]
+        (section, MIN_KEEP_SCORE, CANDIDATE_MAX_AGE_DAYS, limit * 4))
+    items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url"], r))
+             for r in rows]
+    # Candidates ingested before tracker unwrapping and date checks existed.
+    items = [it for it in items if not is_tracker_url(it["canonical_url"])
+             and not is_stale(url_date(it["canonical_url"]))]
+    return cap_per_domain(items, domain_caps(section), limit)
 
 
 def edit_section(section: str, target: int) -> list[dict]:

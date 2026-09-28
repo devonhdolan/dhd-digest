@@ -17,6 +17,7 @@ Rules:
 - Group naturally: related items adjacent, funding runs together, award and list items at the end.
 - Cut anything redundant with another item in the list. Say so in `dropped`.
 - Never write parenthetical asides. The editor adds those by hand.
+- Never add a source tag like [TC] or [SVC]. The renderer adds the link.
 - Do not invent facts. If a blurb overclaims relative to its headline, tighten it.
 - Return exactly the number of items requested, unless fewer survive the cut."""
 
@@ -26,7 +27,7 @@ def build_user_message(section, items, examples, target_count):
              f"TARGET COUNT: {target_count}", "",
              "STYLE REFERENCE (real lines from the archive):"]
     for e in examples:
-        lines.append(f"  {e['blurb']}  [{e['tag']}]")
+        lines.append(f"  {e['blurb']}")
     lines += ["", "CANDIDATES (id | score | blurb | domain):"]
     for it in items:
         lines.append(f"  {it['id']} | {it['keep_score']:.1f} | {it['blurb']} | {it['domain']}")

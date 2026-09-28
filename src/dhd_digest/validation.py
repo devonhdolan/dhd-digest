@@ -5,6 +5,8 @@ unlikely, not impossible - a hallucinated id, an out-of-range score, or a
 blurb that ignores every instruction can still come back. Validate once,
 here, instead of trusting every call site to notice.
 """
+import re
+
 from pydantic import BaseModel, Field, field_validator
 
 from .config import SECTIONS
@@ -14,6 +16,10 @@ from .config import SECTIONS
 # runaway explanation - not enforcing house style; BLURB_MAX_WORDS_BY_SECTION
 # trimming handles the normal "a couple words over" case elsewhere.
 MAX_BLURB_WORDS = 30
+
+# A source tag the model copied onto the end of a blurb ("... raised $6m.  [SVC]").
+# The renderer adds the real one as the link text.
+TRAILING_TAG = re.compile(r"\s*\[[^\[\]]{1,12}\]\s*$")
 
 
 class TriageJudgment(BaseModel):
@@ -45,6 +51,11 @@ def validate_triage_judgment(raw: dict) -> TriageJudgment:
 class SectionItem(BaseModel):
     id: int
     blurb: str = Field(min_length=1)
+
+    @field_validator("blurb")
+    @classmethod
+    def strip_source_tag(cls, v: str) -> str:
+        return TRAILING_TAG.sub("", v).strip() or v
 
 
 class SectionSelection(BaseModel):
