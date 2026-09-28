@@ -2,7 +2,6 @@
 .venv/
 __pycache__/
 *.pyc
-drafts/
 .pytest_cache/
 .neon
 .env.local
