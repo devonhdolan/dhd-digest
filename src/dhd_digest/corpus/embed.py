@@ -1,4 +1,5 @@
 """Embedding helpers. Anthropic doesn't serve embeddings, so this uses Voyage."""
+import re
 import time
 
 import voyageai
@@ -50,8 +51,26 @@ def historical_text(row: dict) -> str:
     return f"[{row['section']}] {row['blurb']} ({row['domain']})"
 
 
+# Funding-round boilerplate. Left in, it dominates similarity: every "X raises
+# $12m Series A" sits close to thousands of archive raises whatever X does, so
+# a heart-device raise looks as on-brand as a music-app raise. Stripped from
+# the query, neighbours are found by what the company does.
+_RAISE_BOILERPLATE = re.compile(
+    r"[$€£]?\s?\d[\d.,]*\s?(?:m|mn|b|bn|k|million|billion)\b"
+    r"|[$€£]\s?\d[\d.,]*"
+    r"|\b(?:pre-?)?seed\b|\bseries [a-h]\+?\b|\b(?:funding|financing|investment)\s+round\b"
+    r"|\b(?:raises|raised|raising|secures|secured|closes|closed|lands|landed|nabs|bags)\b"
+    r"|\bled by\b|\bvaluation\b|\bvalued at\b",
+    re.I)
+
+
+def strip_raise_boilerplate(text: str) -> str:
+    return re.sub(r"\s{2,}", " ", _RAISE_BOILERPLATE.sub(" ", text)).strip()
+
+
 def candidate_text(row: dict) -> str:
-    """Same shape for a new link, so the vectors are comparable."""
+    """Same shape for a new link, so the vectors are comparable - minus
+    funding-round wording, so the match is on subject, not format."""
     head = row.get("headline") or row.get("anchor_text") or ""
     excerpt = (row.get("excerpt") or "")[:300]
-    return f"{head} {excerpt} ({row['domain']})".strip()
+    return strip_raise_boilerplate(f"{head} {excerpt}") + f" ({row['domain']})"

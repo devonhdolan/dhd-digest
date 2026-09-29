@@ -26,6 +26,7 @@ feeds + newsletter inbox
 | Section mix, stable ±3pts for 5 years | Collab 37.1 / Tech 22.5 / Ent 20.6 / Media 19.7 | `config.SECTION_MIX` |
 | Blurb length | median 8 words, p99 17 | `config.BLURB_MAX_WORDS_BY_SECTION` |
 | Tech items that are fundraises | 52.5% | `triage/prompts.py` section brief |
+| Tech items about media, music, games, video, creators, ads or sport | ~60% (keyword estimate) | `fit` score in `triage/prompts.py`; keep_score = min(fit, resemblance) |
 | Entertainment items that are fundraises | 1.0% | same |
 | URLs ever repeated | 102 of 29,819 | `seen_urls`, seeded at load |
 | Links from one domain in one section of an issue, p90 | 3 overall; per domain from the archive | `config.DOMAIN_CAP_DEFAULT`, `editor/assemble.py:domain_caps` |
@@ -83,6 +84,18 @@ uv run dhd assemble    # writes drafts/issue-251.md
 **5. Schedule.** Add `DATABASE_URL`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, and
 your ingestion credentials as repo secrets. The two workflows then run daily at
 6am and Sunday at 6pm Pacific. The weekly job opens a PR rather than publishing.
+
+## Changing the scoring
+
+Triage gives each link two scores: `fit` (is it on the beat: the creative
+and media industries and the tech reshaping them) and resemblance (did the
+editor publish things like it). The stored `keep_score` is the lower of the two.
+
+Any PR touching triage, retrieval, the editor or `config.py` runs the
+**rescore** workflow in compare mode. It re-scores the week's candidates with
+the PR's code and posts a before/after report as the job summary. Nothing is
+written. After merging, run **rescore → apply** once, so candidates already
+scored the old way get re-triaged before the next draft.
 
 ## The human pass
 

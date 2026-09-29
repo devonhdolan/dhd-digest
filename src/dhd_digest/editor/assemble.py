@@ -71,8 +71,19 @@ def cap_per_domain(items: list[dict], caps: dict[str, int], limit: int) -> list[
     return out
 
 
+def select_pool(items: list[dict], caps: dict[str, int], limit: int,
+                min_score: float = MIN_KEEP_SCORE) -> list[dict]:
+    """What the section editor gets offered: above the bar, best first, no
+    trackers or stale links (candidates ingested before those checks existed),
+    at most caps[domain] per domain."""
+    items = sorted((it for it in items if it["keep_score"] >= min_score
+                    and not is_tracker_url(it["canonical_url"])
+                    and not is_stale(url_date(it["canonical_url"]))),
+                   key=lambda it: it["keep_score"], reverse=True)
+    return cap_per_domain(items, caps, limit)
+
+
 def pool(section: str, limit: int) -> list[dict]:
-    # Over-fetch: the domain cap and the tracker/stale filters below cut some.
     rows = query(
         """SELECT id, blurb, domain, keep_score, canonical_url
            FROM candidates
@@ -80,18 +91,20 @@ def pool(section: str, limit: int) -> list[dict]:
              AND section = %s AND keep_score >= %s
              AND first_seen_at > now() - make_interval(days => %s)
            ORDER BY keep_score DESC LIMIT %s""",
+        # Over-fetch: the domain cap and tracker/stale filters cut some.
         (section, MIN_KEEP_SCORE, CANDIDATE_MAX_AGE_DAYS, limit * 4))
     items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url"], r))
              for r in rows]
-    # Candidates ingested before tracker unwrapping and date checks existed.
-    items = [it for it in items if not is_tracker_url(it["canonical_url"])
-             and not is_stale(url_date(it["canonical_url"]))]
-    return cap_per_domain(items, domain_caps(section), limit)
+    return select_pool(items, domain_caps(section), limit)
+
+
+def pool_size(target: int) -> int:
+    """Over-supply the editor so it has room to cut."""
+    return int(target * 1.8)
 
 
 def edit_section(section: str, target: int) -> list[dict]:
-    # Over-supply the editor so it has room to cut.
-    items = pool(section, int(target * 1.8))
+    items = pool(section, pool_size(target))
     if not items:
         return []
     resp = client().messages.create(

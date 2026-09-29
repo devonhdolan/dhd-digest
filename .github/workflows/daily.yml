@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
+      - run: uv run dhd init-db     # idempotent; applies additive schema changes
       - run: uv run dhd ingest
       - run: uv run dhd triage 800
       - run: uv run dhd stats

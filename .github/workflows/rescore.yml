@@ -1,0 +1,69 @@
+name: rescore
+# "compare" re-scores this week's candidates with the triage prompt and
+# scoring in this checkout and reports before/after, writing nothing. It runs
+# by hand, and on any PR that touches scoring so the PR shows its effect.
+# "apply" (by hand only) re-triages them for real, so the next draft uses the
+# new scoring.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [compare, apply]
+        default: compare
+      draft_ref:
+        description: "compare: branch holding a draft to check (blank for none)"
+        default: "draft/issue-3"
+      draft_file:
+        description: "compare: path of that draft"
+        default: "drafts/issue-251.md"
+  pull_request:
+    paths:
+      - src/dhd_digest/triage/**
+      - src/dhd_digest/corpus/embed.py
+      - src/dhd_digest/corpus/search.py
+      - src/dhd_digest/editor/**
+      - src/dhd_digest/config.py
+
+concurrency:
+  group: rescore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rescore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      # On pull_request there are no inputs; fall back to the dispatch defaults.
+      MODE: ${{ inputs.mode || 'compare' }}
+      DRAFT_REF: ${{ github.event_name == 'pull_request' && 'draft/issue-3' || inputs.draft_ref }}
+      DRAFT_FILE: ${{ inputs.draft_file || 'drafts/issue-251.md' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Fetch draft to check
+        if: env.MODE == 'compare' && env.DRAFT_REF != ''
+        continue-on-error: true      # the draft branch may be gone; compare without it
+        run: |
+          git fetch --depth=1 origin "$DRAFT_REF"
+          mkdir -p "$(dirname "$DRAFT_FILE")"
+          git show "FETCH_HEAD:$DRAFT_FILE" > "$DRAFT_FILE"
+      - name: Compare
+        if: env.MODE == 'compare'
+        run: uv run dhd compare "$DRAFT_FILE"
+      - uses: actions/upload-artifact@v4
+        if: env.MODE == 'compare'
+        with:
+          name: compare-report
+          path: compare-report.md
+      - name: Apply
+        if: env.MODE == 'apply'
+        run: |
+          uv run dhd init-db
+          uv run dhd retriage
+          uv run dhd triage 2000
+          uv run dhd stats

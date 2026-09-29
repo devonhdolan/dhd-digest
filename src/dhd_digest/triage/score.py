@@ -1,5 +1,6 @@
 """Score untriaged candidates against the archive."""
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import anthropic
@@ -46,39 +47,65 @@ def trim_blurb(blurb: str, section: str) -> str:
     return " ".join(words[:cap]) if len(words) > cap else blurb
 
 
+def final_score(out: TriageJudgment, n_sources: int) -> float:
+    """The lower of fit and resemblance, so a well-shaped item off the beat
+    can't score its way in. The multi-source boost lifts resemblance only and
+    never past fit: lots of newsletters carrying a story doesn't put it on-beat."""
+    resemblance = out.keep_score + CONVERGENCE_BOOST * max(n_sources - 1, 0)
+    return min(float(out.fit), resemblance, 10.0)
+
+
+CANDIDATE_COLUMNS = ["id", "canonical_url", "domain", "anchor_text", "headline",
+                     "excerpt", "sources"]
+
+
+def score_candidates(cands: list[dict], workers: int = 4):
+    """Yield (candidate, vector, judgment, final score) for each candidate
+    that triaged cleanly. Reads only - callers decide what to write.
+    Neighbour lookups share the one DB connection, so they run serially;
+    the model calls run `workers` at a time."""
+    vectors = embed([candidate_text(c) for c in cands], input_type="query")
+    prepared = []
+    for cand, vec in zip(cands, vectors):
+        try:
+            nbrs = neighbors_by_section(vec)
+            prepared.append((cand, vec, nbrs, best_section_prior(nbrs)[0]))
+        except Exception as exc:
+            print(f"  skip {cand['canonical_url']}: {exc}")
+
+    def work(item):
+        cand, vec, nbrs, prior = item
+        try:
+            out = judge(cand, nbrs, prior)
+        except Exception as exc:              # never let one link stop the run
+            print(f"  skip {cand['canonical_url']}: {exc}")
+            return None
+        return cand, vec, out, final_score(out, len(cand.get("sources") or []))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for result in pool.map(work, prepared):
+            if result:
+                yield result
+
+
 def run(limit: int = 500):
     rows = query(
-        """SELECT id, canonical_url, domain, anchor_text, headline, excerpt, sources
-           FROM candidates WHERE triaged_at IS NULL
-           ORDER BY first_seen_at LIMIT %s""", (limit,))
+        f"""SELECT {', '.join(CANDIDATE_COLUMNS)}
+            FROM candidates WHERE triaged_at IS NULL
+            ORDER BY first_seen_at LIMIT %s""", (limit,))
     if not rows:
         print("nothing to triage")
         return
 
-    cands = [dict(zip(
-        ["id", "canonical_url", "domain", "anchor_text", "headline", "excerpt", "sources"], r
-    )) for r in rows]
-
-    vectors = embed([candidate_text(c) for c in cands], input_type="query")
+    cands = [dict(zip(CANDIDATE_COLUMNS, r)) for r in rows]
 
     with conn().cursor() as cur:
-        for cand, vec in zip(cands, vectors):
-            try:
-                nbrs = neighbors_by_section(vec)
-                prior, _ = best_section_prior(nbrs)
-                out = judge(cand, nbrs, prior)
-            except Exception as exc:              # never let one link stop the run
-                print(f"  skip {cand['canonical_url']}: {exc}")
-                continue
-
-            score = float(out.keep_score)
-            if len(cand.get("sources") or []) > 1:
-                score += CONVERGENCE_BOOST * (len(cand["sources"]) - 1)
-
+        for cand, vec, out, score in score_candidates(cands):
             cur.execute(
-                """UPDATE candidates SET section=%s, keep_score=%s, blurb=%s,
-                       reasoning=%s, embedding=%s, triaged_at=%s WHERE id=%s""",
-                (out.section, min(score, 10.0),
+                """UPDATE candidates SET section=%s, keep_score=%s, fit_score=%s,
+                       blurb=%s, reasoning=%s, embedding=%s, triaged_at=%s
+                   WHERE id=%s""",
+                (out.section, score, out.fit,
                  trim_blurb(out.blurb, out.section),
                  out.reasoning, vec, datetime.now(timezone.utc), cand["id"]))
     print(f"triaged {len(cands)} candidates")

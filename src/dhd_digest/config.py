@@ -30,8 +30,11 @@ BLURB_MAX_WORDS_BY_SECTION = {
     "Tech": 12, "Media": 12, "Entertainment": 14, "Collaborative": 11,
 }
 
+# A ceiling: sections are filled up to their share of this, never padded.
 TARGET_LINKS_PER_ISSUE = 150
-MIN_KEEP_SCORE = 6
+# keep_score is min(fit, resemblance), so 7 means "at least adjacent to the beat
+# and clearly the kind of thing the editor published".
+MIN_KEEP_SCORE = 7
 
 # Freshness. Newsletter footers and "popular posts" blocks link years-old
 # pieces; drop anything whose URL or page metadata dates it past this.

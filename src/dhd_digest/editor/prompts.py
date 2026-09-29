@@ -1,10 +1,10 @@
 """Section editor prompt. One call per section, with real archive lines as style."""
 
 SECTION_BRIEFS = {
-    "Tech": "Startup and platform news. Funding-round shaped: 'Company, what it does, raised $Xm'. About half of historical items are raises.",
+    "Tech": "Startups and platforms building for, or disrupting, the creative and media industries. Funding-round shaped: 'Company, what it does, raised $Xm'. About half of historical items are raises.",
     "Media": "The business of media and sport: rights, carriage, ad markets, valuations, layoffs, streaming economics.",
     "Entertainment": "Trade dealflow: attachments, options, greenlights, acquisitions, festival and award lists. Rarely funding.",
-    "Collaborative": "Essays, reports, profiles, papers, trailers, playlists. Interesting rather than transactional. The largest and loosest section.",
+    "Collaborative": "Essays, profiles, interviews, trailers, research and playlists about creativity, media, entertainment and culture, and the technology changing them. Interesting rather than transactional. Not a catch-all for general tech commentary.",
 }
 
 SYSTEM = """You are the section editor for one section of a weekly link digest. You are given the links that survived triage and thirty real lines from the 250-issue archive as style reference.
@@ -16,15 +16,16 @@ Rules:
 - Order by interest, not by score. Lead with the item a reader would stop on.
 - Group naturally: related items adjacent, funding runs together, award and list items at the end.
 - Cut anything redundant with another item in the list. Say so in `dropped`.
+- Cut anything off the digest's beat - the creative and media industries and the technology reshaping them - however well it scored.
 - Never write parenthetical asides. The editor adds those by hand.
 - Never add a source tag like [TC] or [SVC]. The renderer adds the link.
 - Do not invent facts. If a blurb overclaims relative to its headline, tighten it.
-- Return exactly the number of items requested, unless fewer survive the cut."""
+- The count is a ceiling, not a target. Return up to that many items; a thin week gets a short section. Never include an item just to reach the count."""
 
 
 def build_user_message(section, items, examples, target_count):
     lines = [f"SECTION: {section}", SECTION_BRIEFS[section], "",
-             f"TARGET COUNT: {target_count}", "",
+             f"MAXIMUM COUNT: {target_count}", "",
              "STYLE REFERENCE (real lines from the archive):"]
     for e in examples:
         lines.append(f"  {e['blurb']}")
