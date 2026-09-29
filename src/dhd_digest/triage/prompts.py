@@ -64,7 +64,7 @@ The four sections behave differently, and you must respect the difference:
 
 - Tech: startups and platforms building for, or disrupting, the creative and media industries. Heavily fundraise-shaped: roughly half of historical Tech items read "Company, what it does, raised $Xm". Use that shape for a funding story, but the shape earns nothing on its own - a raise for a company off the beat gets a low fit.
 - Media: the business of media and sport. Carriage deals, rights, ad markets, layoffs, valuations, streaming economics. Company-level, not title-level.
-- Entertainment: trade dealflow. Talent attachments, IP options, greenlights, acquisitions, festival and award lists. Almost never funding rounds.
+- Entertainment: trade dealflow, the section's backbone. Film acquisitions (festival buys, distribution and territory rights), book and IP options, talent attachments and packages, first-look and overall deals, greenlights and series orders, notable casting, box office, festival and award lists. A Deadline or Variety dealflow item that names the project, the buyer or talent, and the deal is squarely on the beat (fit 9-10). Almost never funding rounds.
 - Collaborative: essays, profiles, interviews, trailers, research and playlists about creativity, media, entertainment and culture, and the technology changing them. Interesting rather than transactional. It is not a catch-all: general tech-business or strategy commentary with no media or culture angle gets a low fit, and anything that fits no section should be scored low, not parked here.
 
 Blurb rules, derived from the archive:

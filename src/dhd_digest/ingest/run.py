@@ -8,7 +8,7 @@ from selectolax.parser import HTMLParser
 
 from ..config import MAX_ARTICLE_AGE_DAYS
 from ..db.client import conn, query
-from . import feedbin, imap
+from . import feedbin, imap, rss
 from .normalize import (canonicalize, domain_of, is_stale, is_tracker_url,
                         unwrap, url_date)
 
@@ -94,7 +94,9 @@ def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str, date | N
 
 def run():
     raw, source_key, checkpoint = collect()
-    print(f"fetched {len(raw)} raw anchors")
+    print(f"fetched {len(raw)} raw anchors from newsletters")
+    raw += rss.fetch_links()
+    print(f"{len(raw)} with trade RSS feeds")
 
     merged: dict[str, dict] = {}
     sources = defaultdict(set)
@@ -130,7 +132,10 @@ def run():
             if is_stale(published):
                 stale += 1
                 continue
-            enriched.append((row, headline, excerpt))
+            # Trade sites often block the page fetch; the feed's own title and
+            # summary are a good stand-in.
+            enriched.append((row, headline or row["anchor_text"],
+                             excerpt or row["context"]))
         print(f"{stale} dropped as older than {MAX_ARTICLE_AGE_DAYS} days")
 
     # Everything from here is one transaction: candidates land and the

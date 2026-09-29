@@ -24,6 +24,8 @@ on:
       - src/dhd_digest/corpus/search.py
       - src/dhd_digest/editor/**
       - src/dhd_digest/config.py
+      - src/dhd_digest/ingest/rss.py
+      - data/feeds.csv
 
 concurrency:
   group: rescore-${{ github.ref }}
@@ -52,9 +54,12 @@ jobs:
           git fetch --depth=1 origin "$DRAFT_REF"
           mkdir -p "$(dirname "$DRAFT_FILE")"
           git show "FETCH_HEAD:$DRAFT_FILE" > "$DRAFT_FILE"
+      - name: Check trade feeds (read-only)
+        if: env.MODE == 'compare'
+        run: uv run dhd feeds
       - name: Compare
         if: env.MODE == 'compare'
-        run: uv run dhd compare "$DRAFT_FILE"
+        run: uv run dhd compare "$DRAFT_FILE" --feeds
       - uses: actions/upload-artifact@v4
         if: env.MODE == 'compare'
         with:

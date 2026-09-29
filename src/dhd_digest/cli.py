@@ -3,8 +3,10 @@
   init-db       apply schema.sql
   load-corpus   load + embed the 250-issue archive, seed seen_urls
   ingest        daily: fetch feeds/mail, canonicalize, dedup, store candidates
+  feeds         read-only check of data/feeds.csv: items per feed, sample titles
   triage        daily: score untriaged candidates against the archive
-  compare [F]   read-only before/after report for a scoring change; F = a draft to check
+  compare [F] [--feeds]  read-only before/after report for a scoring change;
+                F = a draft to check, --feeds = also score the trade feeds' current items
   retriage      queue this week's open candidates scored the old way for re-triage
   assemble      weekly: build drafts/issue-NNN.md
   publish N     mark issue N's surviving (reviewed) links as published
@@ -25,13 +27,18 @@ def main():
     elif cmd == "ingest":
         from .ingest.run import run
         run()
+    elif cmd == "feeds":
+        from .ingest.rss import check
+        check()
     elif cmd == "triage":
         from .triage.score import run
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 500
         run(limit)
     elif cmd == "compare":
         from .triage.compare import run
-        run(sys.argv[2] if len(sys.argv) > 2 else None)
+        args = sys.argv[2:]
+        draft = next((a for a in args if not a.startswith("--")), None)
+        run(draft or None, feeds="--feeds" in args)
     elif cmd == "retriage":
         from .config import CANDIDATE_MAX_AGE_DAYS
         from .db.client import execute

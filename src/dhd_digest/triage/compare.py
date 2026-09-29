@@ -1,12 +1,14 @@
 """Before/after report for a scoring change. Read-only: nothing is written to
 the database.
 
-    dhd compare [drafts/issue-N.md]
+    dhd compare [drafts/issue-N.md] [--feeds]
 
 Re-scores this week's open candidates with the current triage prompt and
 scoring, then shows what the section editor would be offered under the stored
 (old) scores versus the new ones, section by section. Given a draft, it also
-says which of that draft's items would still make the pool.
+says which of that draft's items would still make the pool. With --feeds, it
+also scores the trade RSS feeds' current items (not yet ingested) to show
+what they would add.
 """
 import os
 from collections import Counter
@@ -15,6 +17,8 @@ from pathlib import Path
 from ..config import CANDIDATE_MAX_AGE_DAYS, MIN_FIT, MIN_KEEP_SCORE, SECTIONS
 from ..db.client import query
 from ..editor.assemble import bad_link, domain_caps, pool_size, quotas, select_pool
+from ..ingest import rss
+from ..ingest.normalize import canonicalize, domain_of
 from ..render.markdown import parse_published
 from .score import CANDIDATE_COLUMNS, score_candidates
 
@@ -24,6 +28,7 @@ from .score import CANDIDATE_COLUMNS, score_candidates
 OLD_MIN_KEEP_SCORE = 6
 RESCORE_FLOOR = 5
 LIST_LIMIT = 40
+FEED_ITEMS_PER_FEED = 50
 
 
 def load(days: int, include_ids: list[int]) -> list[dict]:
@@ -41,35 +46,68 @@ def load(days: int, include_ids: list[int]) -> list[dict]:
     return [dict(zip(cols, r)) for r in rows]
 
 
+def feed_candidates() -> list[dict]:
+    """Current feed items that aren't candidates or published yet, shaped
+    like candidate rows. Negative ids: they don't exist in the table."""
+    per_feed: dict[str, int] = {}
+    out, seen = [], set()
+    for link in rss.fetch_links():
+        cu = canonicalize(link["raw_url"])
+        if not cu or cu in seen or per_feed.get(link["source"], 0) >= FEED_ITEMS_PER_FEED:
+            continue
+        seen.add(cu)
+        per_feed[link["source"]] = per_feed.get(link["source"], 0) + 1
+        out.append({"canonical_url": cu, "domain": domain_of(cu),
+                    "anchor_text": link["anchor_text"], "headline": link["anchor_text"],
+                    "excerpt": link["context"], "sources": [link["source"]]})
+    known = {r[0] for r in query(
+        """SELECT canonical_url FROM candidates WHERE canonical_url = ANY(%s)
+           UNION SELECT canonical_url FROM seen_urls WHERE canonical_url = ANY(%s)""",
+        ([c["canonical_url"] for c in out],) * 2)}
+    out = [c for c in out if c["canonical_url"] not in known]
+    for i, c in enumerate(out):
+        c["id"] = -(i + 1)
+    return out
+
+
 def line(it: dict) -> str:
     return f"- {it['blurb']} — `{it['domain']}`"
 
 
 def rescored_line(it: dict) -> str:
+    was = (f"new from {it['feed']}" if it.get("feed")
+           else f"was {it['old_score']:.1f} in {it['old_section']}")
     return (f"- {it['new_blurb']} — `{it['domain']}` · fit {it['fit']}, "
-            f"resemblance {it['resemblance']}, was {it['old_score']:.1f} in "
-            f"{it['old_section']}  \n  _{it['reasoning']}_")
+            f"resemblance {it['resemblance']}, {was}  \n  _{it['reasoning']}_")
 
 
 def run(draft: str | None = None, days: int = CANDIDATE_MAX_AGE_DAYS,
-        out_path: str = "compare-report.md") -> str:
+        out_path: str = "compare-report.md", feeds: bool = False) -> str:
     draft_items = parse_published(draft) if draft and Path(draft).exists() else []
     cands = load(days, [it["id"] for it in draft_items])
+    fresh = feed_candidates() if feeds else []
     print(f"re-scoring {len(cands)} candidates: open ones from the last {days} days "
-          f"with a stored score >= {RESCORE_FLOOR}, plus {len(draft_items)} draft items")
+          f"with a stored score >= {RESCORE_FLOOR}, plus {len(draft_items)} draft items; "
+          f"scoring {len(fresh)} new trade-feed items")
 
-    old, new = [], []
-    for cand, _vec, judgment, score in score_candidates(cands, workers=8):
+    old, new, from_feeds = [], [], []
+    for cand, _vec, judgment, score in score_candidates(cands + fresh, workers=8):
         base = {"id": cand["id"], "domain": cand["domain"],
                 "canonical_url": cand["canonical_url"]}
-        old.append({**base, "section": cand["section"], "keep_score": cand["keep_score"],
-                    "blurb": cand["blurb"]})
-        new.append({**base, "section": judgment.section, "keep_score": score,
+        rescored = {**base, "section": judgment.section, "keep_score": score,
                     "blurb": judgment.blurb, "new_blurb": judgment.blurb,
                     "fit": judgment.fit, "resemblance": judgment.keep_score,
                     "reasoning": judgment.reasoning,
-                    "old_section": cand["section"], "old_score": cand["keep_score"]})
-    new_by_id = {it["id"]: it for it in new}
+                    "old_section": cand.get("section") or "—",
+                    "old_score": cand.get("keep_score") or 0.0,
+                    "feed": cand["sources"][0] if cand["id"] < 0 else None}
+        if cand["id"] < 0:
+            from_feeds.append(rescored)
+            continue
+        old.append({**base, "section": cand["section"], "keep_score": cand["keep_score"],
+                    "blurb": cand["blurb"]})
+        new.append(rescored)
+    new_by_id = {it["id"]: it for it in new + from_feeds}
 
     q = quotas()
     pools_old, pools_new = {}, {}
@@ -77,7 +115,8 @@ def run(draft: str | None = None, days: int = CANDIDATE_MAX_AGE_DAYS,
         caps, size = domain_caps(s), pool_size(q[s])
         pools_old[s] = select_pool([i for i in old if i["section"] == s], caps, size,
                                    OLD_MIN_KEEP_SCORE, min_fit=None)
-        pools_new[s] = select_pool([i for i in new if i["section"] == s], caps, size)
+        pools_new[s] = select_pool([i for i in new + from_feeds if i["section"] == s],
+                                   caps, size)
 
     md = [f"# Scoring comparison — last {days} days",
           "",
@@ -123,6 +162,26 @@ def run(draft: str | None = None, days: int = CANDIDATE_MAX_AGE_DAYS,
         md += [rescored_line(it) for it in came_in[:LIST_LIMIT]] or ["_none_"]
         md += ["", f"### Stays ({len(kept)})", ""]
         md += [line(it) for it in kept[:LIST_LIMIT]] or ["_none_"]
+
+    if from_feeds:
+        md += ["", "## What the trade feeds would add", "",
+               f"{len(from_feeds)} current feed items not yet ingested, scored the new way. "
+               "They are counted in “Pool after” above and listed under “Comes into "
+               "the pool” per section.", "",
+               "| Feed | Items | Clear both bars | → Entertainment | → Media | → Tech | → Collaborative |",
+               "|---|---|---|---|---|---|---|"]
+        for name in sorted({i["feed"] for i in from_feeds}):
+            items = [i for i in from_feeds if i["feed"] == name]
+            ok = [i for i in items if i["fit"] >= MIN_FIT and i["keep_score"] >= MIN_KEEP_SCORE]
+            by = Counter(i["section"] for i in ok)
+            md.append(f"| {name} | {len(items)} | {len(ok)} | {by['Entertainment']} | "
+                      f"{by['Media']} | {by['Tech']} | {by['Collaborative']} |")
+        ent = sorted((i for i in from_feeds if i["section"] == "Entertainment"
+                      and i["fit"] >= MIN_FIT and i["keep_score"] >= MIN_KEEP_SCORE),
+                     key=lambda i: -i["keep_score"])
+        md += ["", f"### Entertainment items from the feeds ({len(ent)})", ""]
+        md += [f"- {i['new_blurb']} — {i['feed']} · fit {i['fit']}, resemblance {i['resemblance']}"
+               for i in ent[:LIST_LIMIT]] or ["_none_"]
 
     if draft_items:
         items = draft_items

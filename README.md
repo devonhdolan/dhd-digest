@@ -65,9 +65,13 @@ migrate to the Gmail API eventually.
 
 Either way, subscribe to: StrictlyVC, Future Party, DealBook, Axios Pro Rata and
 Media Trends, The Ankler, Puck, Stratechery, The Information, Screentime,
-Matthew Ball, Digital Native, The Generalist. Add straight RSS for the top
-domains — Deadline, Variety, THR, TechCrunch, The Verge, VentureBeat, IndieWire —
-which are ~47% of the archive between them and don't depend on send schedules.
+Matthew Ball, Digital Native, The Generalist.
+
+The trades are read directly as RSS, whichever inbox path you use:
+`data/feeds.csv` lists Deadline, Variety, THR, IndieWire, TheWrap and
+TechCrunch's media & entertainment feed. Newsletters carry little trade
+dealflow, so without these Entertainment runs thin. `uv run dhd feeds` checks
+the list without writing anything.
 
 Paid newsletters tied to your real address usually can't be re-subscribed under
 a second one. Handle those with a forwarding filter on your primary Gmail:

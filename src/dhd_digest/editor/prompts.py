@@ -3,7 +3,7 @@
 SECTION_BRIEFS = {
     "Tech": "Startups and platforms building for, or disrupting, the creative and media industries. Funding-round shaped: 'Company, what it does, raised $Xm'. About half of historical items are raises.",
     "Media": "The business of media and sport: rights, carriage, ad markets, valuations, layoffs, streaming economics.",
-    "Entertainment": "Trade dealflow: attachments, options, greenlights, acquisitions, festival and award lists. Rarely funding.",
+    "Entertainment": "Trade dealflow: film acquisitions and distribution rights, book and IP options, talent attachments and packages, first-look and overall deals, greenlights and series orders, casting, box office, festival and award lists. Deal items lead; name the project, the buyer or talent, and the deal. Rarely funding.",
     "Collaborative": "Essays, profiles, interviews, trailers, research and playlists about creativity, media, entertainment and culture, and the technology changing them. Interesting rather than transactional. Not a catch-all for general tech commentary.",
 }
 
