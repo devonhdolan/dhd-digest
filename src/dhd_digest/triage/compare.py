@@ -16,9 +16,9 @@ from pathlib import Path
 
 from ..config import CANDIDATE_MAX_AGE_DAYS, MIN_FIT, MIN_KEEP_SCORE, SECTIONS
 from ..db.client import query
-from ..editor.assemble import bad_link, domain_caps, pool_size, quotas, select_pool
+from ..editor.assemble import domain_caps, pool_size, quotas, select_pool
 from ..ingest import rss
-from ..ingest.normalize import canonicalize, domain_of
+from ..ingest.normalize import bad_link, canonicalize, domain_of
 from ..render.markdown import parse_published
 from .score import CANDIDATE_COLUMNS, score_candidates
 

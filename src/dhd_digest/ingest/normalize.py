@@ -169,5 +169,12 @@ def is_stale(published: date | None, today: date | None = None) -> bool:
     return ((today or date.today()) - published).days > MAX_ARTICLE_AGE_DAYS
 
 
+def bad_link(url: str) -> bool:
+    """Links today's ingest would refuse: trackers, junk and personal links,
+    stale dates. Stored candidates can predate those checks."""
+    return (is_tracker_url(url) or canonicalize(url) is None
+            or is_stale(url_date(url)))
+
+
 def domain_of(canonical_url: str) -> str:
     return urlparse(canonical_url).netloc

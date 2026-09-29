@@ -17,7 +17,7 @@ from datetime import date
 
 from ..config import MIN_FIT, MIN_KEEP_SCORE, SECTIONS
 from ..db.client import conn, query
-from ..editor.assemble import bad_link
+from ..ingest.normalize import bad_link
 
 MAX_ITEMS = 40
 MAX_NEAR_MISSES = 8

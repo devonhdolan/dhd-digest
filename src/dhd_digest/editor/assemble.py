@@ -10,7 +10,7 @@ from ..config import (ANTHROPIC_API_KEY, CANDIDATE_MAX_AGE_DAYS,
                       SECTION_MIX, SECTIONS, TARGET_LINKS_PER_ISSUE)
 from ..corpus.search import style_examples
 from ..db.client import conn, query
-from ..ingest.normalize import canonicalize, is_stale, is_tracker_url, url_date
+from ..ingest.normalize import bad_link
 from ..render.markdown import parse_published
 from ..validation import validate_section_selection
 from .prompts import SECTION_TOOL, SYSTEM, build_user_message
@@ -69,13 +69,6 @@ def cap_per_domain(items: list[dict], caps: dict[str, int], limit: int) -> list[
         if len(out) == limit:
             break
     return out
-
-
-def bad_link(url: str) -> bool:
-    """Links today's ingest would refuse: trackers, junk and personal links,
-    stale dates. Stored candidates can predate those checks."""
-    return (is_tracker_url(url) or canonicalize(url) is None
-            or is_stale(url_date(url)))
 
 
 def select_pool(items: list[dict], caps: dict[str, int], limit: int,
