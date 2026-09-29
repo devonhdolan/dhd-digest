@@ -34,6 +34,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  feeds:
+    # Free (no model calls, no secrets), so it runs on every matching PR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run dhd feeds
+
   rescore:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'rescore')
     runs-on: ubuntu-latest
@@ -57,9 +68,6 @@ jobs:
           git fetch --depth=1 origin "$DRAFT_REF"
           mkdir -p "$(dirname "$DRAFT_FILE")"
           git show "FETCH_HEAD:$DRAFT_FILE" > "$DRAFT_FILE"
-      - name: Check trade feeds (read-only)
-        if: env.MODE == 'compare'
-        run: uv run dhd feeds
       - name: Compare
         if: env.MODE == 'compare'
         run: uv run dhd compare "$DRAFT_FILE" --feeds
