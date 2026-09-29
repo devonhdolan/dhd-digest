@@ -1,7 +1,10 @@
 name: weekly-draft
 on:
   schedule:
-    - cron: "0 1 * * 1"      # Sunday 18:00 America/Los_Angeles
+    # Sunday 08:17 Pacific daylight time (07:17 in winter, PST). GitHub cron is
+    # UTC-only and starts scheduled jobs late under load (3-5h has been
+    # typical); off-the-hour minutes dodge the worst of the top-of-hour queue.
+    - cron: "17 15 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -27,8 +30,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
       - run: uv run dhd init-db
-      # Catch anything since the morning run - above all, links forwarded in
-      # on Sunday, which must make tonight's draft.
+      # Catch anything since the last daily run - above all, links forwarded
+      # in since, which must make this draft.
       - run: uv run dhd ingest
       - run: uv run dhd triage 800
       - run: uv run dhd assemble

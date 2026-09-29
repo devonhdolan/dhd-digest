@@ -87,7 +87,8 @@ uv run dhd assemble    # writes drafts/issue-251.md
 
 **5. Schedule.** Add `DATABASE_URL`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, and
 your ingestion credentials as repo secrets. The two workflows then run daily at
-6am and Sunday at 6pm Pacific. The weekly job opens a PR rather than publishing.
+6am and Sunday at 8am Pacific (both UTC crons, and GitHub often starts them a few
+hours late). The weekly job opens a PR rather than publishing.
 
 ## Daily review (teaching the curation)
 
@@ -127,8 +128,8 @@ cap and the age window, and the editor model is told to keep them.
   the link you want at the top.
 - **Where it's read:** the inbox (`IMAP_PICKS_FOLDER`, default `INBOX`) as
   well as `IMAP_FOLDER`. The Sunday job ingests again right before
-  assembling, so a link forwarded Sunday afternoon still makes that night's
-  draft.
+  assembling, so anything forwarded before it starts (Sunday morning) makes
+  that week's draft. Later forwards go into the next one.
 - A pick already published in an earlier issue is skipped and logged.
 
 ## Changing the scoring
