@@ -35,3 +35,45 @@ def test_feed_list_is_well_formed():
     names = {f["name"] for f in feeds}
     assert {"Deadline Film", "Variety Film", "THR Movies"} <= names
     assert all(f["url"].startswith("https://") for f in feeds)
+
+
+def test_pages_back_until_older_items():
+    from dhd_digest.ingest.rss import fetch_feed, page_url
+
+    assert page_url("https://deadline.com/v/film/feed/", 1) == "https://deadline.com/v/film/feed/"
+    assert page_url("https://deadline.com/v/film/feed/", 3) == "https://deadline.com/v/film/feed/?paged=3"
+
+    def day(n):
+        return format_datetime(datetime.now(timezone.utc) - timedelta(days=n))
+
+    pages = {1: rss(("A", "https://d.com/a", day(0), ""), ("B", "https://d.com/b", day(1), "")),
+             2: rss(("C", "https://d.com/c", day(1), ""), ("D", "https://d.com/d", day(3), "")),
+             3: rss(("E", "https://d.com/e", day(4), ""))}
+
+    class Resp:
+        def __init__(self, page):
+            self.status_code = 200 if page in pages else 404
+            self.content = pages.get(page, b"")
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(self.status_code)
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url):
+            page = int(url.split("paged=")[1]) if "paged=" in url else 1
+            self.calls.append(page)
+            return Resp(page)
+
+    c = Client()
+    out = fetch_feed(c, {"name": "Deadline Film", "url": "https://d.com/feed/"})
+    assert [i["anchor_text"] for i in out] == ["A", "B", "C", "D"]   # page 2 reached day 3: stop
+    assert c.calls == [1, 2]
+
+    pages.pop(2)                                                      # feed that ends early
+    c = Client()
+    assert [i["anchor_text"] for i in fetch_feed(c, {"name": "x", "url": "https://d.com/feed/"})] == ["A", "B"]
+    assert c.calls == [1, 2]
