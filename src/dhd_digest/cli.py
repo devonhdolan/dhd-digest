@@ -44,12 +44,21 @@ def main():
     elif cmd == "retriage":
         from .config import CANDIDATE_MAX_AGE_DAYS
         from .db.client import execute
+        # Worth re-scoring only what the old scoring rated 5+:
+        # the new bars are stricter, so lower scorers can't clear them.
+        floor = 5
+        restored = execute(
+            """UPDATE candidates SET triaged_at = now()
+               WHERE triaged_at IS NULL AND fit_score IS NULL
+                 AND keep_score IS NOT NULL AND keep_score < %s""", (floor,))
         n = execute(
             """UPDATE candidates SET triaged_at = NULL
                WHERE used_in_issue IS NULL AND fit_score IS NULL
-                 AND triaged_at IS NOT NULL
+                 AND triaged_at IS NOT NULL AND keep_score >= %s
                  AND first_seen_at > now() - make_interval(days => %s)""",
-            (CANDIDATE_MAX_AGE_DAYS,))
+            (floor, CANDIDATE_MAX_AGE_DAYS))
+        if restored:
+            print(f"{restored} low scorers from an earlier retriage left as they were")
         print(f"{n} candidates queued for re-triage; run `dhd triage` next")
     elif cmd == "assemble":
         from .editor.assemble import build

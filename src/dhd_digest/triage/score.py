@@ -10,7 +10,8 @@ from ..config import (ANTHROPIC_API_KEY, BLURB_MAX_WORDS_BY_SECTION,
                       CONVERGENCE_BOOST, TRIAGE_MODEL)
 from ..corpus.embed import candidate_text, embed
 from ..corpus.search import best_section_prior, editor_feedback, neighbors_by_section
-from ..db.client import conn, query
+from ..db.client import execute, query
+from ..ingest.normalize import bad_link
 from ..validation import TriageJudgment, validate_triage_judgment
 from .prompts import SYSTEM, TRIAGE_TOOL, build_user_message
 
@@ -60,21 +61,17 @@ CANDIDATE_COLUMNS = ["id", "canonical_url", "domain", "anchor_text", "headline",
                      "excerpt", "sources"]
 
 
+CHUNK = 100   # embed, look up and judge this many at a time
+
+
 def score_candidates(cands: list[dict], workers: int = 4):
     """Yield (candidate, vector, judgment, final score) for each candidate
     that triaged cleanly. Reads only - callers decide what to write.
-    Neighbour lookups share the one DB connection, so they run serially;
-    the model calls run `workers` at a time."""
-    vectors = embed([candidate_text(c) for c in cands], input_type="query")
-    prepared = []
-    for cand, vec in zip(cands, vectors):
-        try:
-            nbrs = neighbors_by_section(vec)
-            prepared.append((cand, vec, nbrs, best_section_prior(nbrs)[0],
-                             editor_feedback(vec, cand["domain"])))
-        except Exception as exc:
-            print(f"  skip {cand['canonical_url']}: {exc}")
 
+    Works in chunks: at the Voyage free tier, embedding 1,000+ texts in one
+    go takes ~20 minutes, long enough for the database to drop the idle
+    connection. Neighbour lookups share the one DB connection, so they run
+    serially; the model calls run `workers` at a time."""
     def work(item):
         cand, vec, nbrs, prior, feedback = item
         try:
@@ -85,9 +82,21 @@ def score_candidates(cands: list[dict], workers: int = 4):
         return cand, vec, out, final_score(out, len(cand.get("sources") or []))
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for result in pool.map(work, prepared):
-            if result:
-                yield result
+        for start in range(0, len(cands), CHUNK):
+            chunk = cands[start:start + CHUNK]
+            vectors = embed([candidate_text(c) for c in chunk], input_type="query")
+            prepared = []
+            for cand, vec in zip(chunk, vectors):
+                try:
+                    nbrs = neighbors_by_section(vec)
+                    prepared.append((cand, vec, nbrs, best_section_prior(nbrs)[0],
+                                     editor_feedback(vec, cand["domain"])))
+                except Exception as exc:
+                    print(f"  skip {cand['canonical_url']}: {exc}")
+            for result in pool.map(work, prepared):
+                if result:
+                    yield result
+            print(f"  scored {min(start + CHUNK, len(cands))}/{len(cands)}")
 
 
 def run(limit: int = 500):
@@ -101,13 +110,24 @@ def run(limit: int = 500):
 
     cands = [dict(zip(CANDIDATE_COLUMNS, r)) for r in rows]
 
-    with conn().cursor() as cur:
-        for cand, vec, out, score in score_candidates(cands):
-            cur.execute(
-                """UPDATE candidates SET section=%s, keep_score=%s, fit_score=%s,
-                       blurb=%s, reasoning=%s, embedding=%s, triaged_at=%s
-                   WHERE id=%s""",
-                (out.section, score, out.fit,
-                 trim_blurb(out.blurb, out.section),
-                 out.reasoning, vec, datetime.now(timezone.utc), cand["id"]))
-    print(f"triaged {len(cands)} candidates")
+    # Links today's ingest would refuse (stored before those checks existed)
+    # are closed out at zero without a model call.
+    junk = {c["id"] for c in cands if bad_link(c["canonical_url"])}
+    if junk:
+        execute("""UPDATE candidates SET keep_score = 0, fit_score = 0, triaged_at = now(),
+                          reasoning = 'bad link: tracker, junk or stale'
+                   WHERE id = ANY(%s)""", (list(junk),))
+        print(f"closed {len(junk)} bad links without scoring")
+    cands = [c for c in cands if c["id"] not in junk]
+
+    done = 0
+    for cand, vec, out, score in score_candidates(cands):
+        execute(
+            """UPDATE candidates SET section=%s, keep_score=%s, fit_score=%s,
+                   blurb=%s, reasoning=%s, embedding=%s, triaged_at=%s
+               WHERE id=%s""",
+            (out.section, score, out.fit,
+             trim_blurb(out.blurb, out.section),
+             out.reasoning, vec, datetime.now(timezone.utc), cand["id"]))
+        done += 1
+    print(f"triaged {done} of {len(cands)} candidates")

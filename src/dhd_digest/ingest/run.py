@@ -170,6 +170,11 @@ def run():
                              excerpt or row["context"]))
         print(f"{stale} dropped as older than {MAX_ARTICLE_AGE_DAYS} days")
 
+    # Fetching every new page above can take minutes, long enough for the
+    # database to drop the idle connection; check it (reconnecting if need
+    # be) before opening the transaction.
+    query("SELECT 1")
+
     # Everything from here is one transaction: candidates land and the
     # checkpoint advances together, or neither does. A crash mid-loop must
     # not advance past messages whose links never made it into the table.
