@@ -43,3 +43,13 @@ def test_candidate_text_keeps_domain():
     t = candidate_text({"headline": "Maykit raises $4m for social music creation",
                         "excerpt": "", "domain": "techcrunch.com"})
     assert t == "Maykit for social music creation (techcrunch.com)"
+
+
+def test_embed_batches_stay_under_the_token_limit():
+    from dhd_digest.corpus.embed import _BATCH_TOKENS, batches, estimate_tokens
+    texts = ["x" * 400] * 300                      # ~134 estimated tokens each
+    bs = batches(texts)
+    assert sum(len(b) for b in bs) == 300
+    assert all(sum(estimate_tokens(t) for t in b) <= _BATCH_TOKENS for b in bs)
+    assert len(batches(["short"] * 300)) == 3      # still capped at 128 texts
+    assert batches([]) == []
