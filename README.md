@@ -89,6 +89,28 @@ uv run dhd assemble    # writes drafts/issue-251.md
 your ingestion credentials as repo secrets. The two workflows then run daily at
 6am and Sunday at 6pm Pacific. The weekly job opens a PR rather than publishing.
 
+## Daily review (teaching the curation)
+
+After each daily run, a GitHub issue titled **Daily review – <date>** lists
+up to 40 items that cleared triage since the last review, by section, plus
+up to 8 near misses.
+
+- **Tick anything that shouldn't be in the dossier**, then close the issue.
+  Unticked items count as keeps. Ticked near misses are pulled in.
+- **Skip a day:** close it as *not planned*. Nothing is recorded.
+- Closing runs **record-review**, which stores every verdict and comments
+  the tally.
+- **What your verdicts do:** a cut item never reaches a draft, and a pulled-in
+  near miss is pinned for the next one. Triage then shows your verdicts on the
+  most similar past items, and your keep rate for the candidate's domain, next
+  to the archive examples. It weighs yours first.
+- **The weekly draft counts too:** `dhd publish N` records what you kept and
+  cut in draft N the same way.
+
+Checkboxes work in the GitHub mobile app, so a day's review is a couple of
+minutes of tapping. There are no extra model calls; the only added cost is
+a few hundred tokens of context per triage call.
+
 ## Forwarding links in (picks)
 
 Email a link to the digest inbox and it goes in the next draft, whatever

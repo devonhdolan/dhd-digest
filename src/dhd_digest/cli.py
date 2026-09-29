@@ -8,6 +8,8 @@
   compare [F] [--feeds]  read-only before/after report for a scoring change;
                 F = a draft to check, --feeds = also score the trade feeds' current items
   retriage      queue this week's open candidates scored the old way for re-triage
+  review-open   daily: open today's review issue (tick what doesn't belong)
+  review-record N   record the verdicts on closed review issue N
   assemble      weekly: build drafts/issue-NNN.md
   publish N     mark issue N's surviving (reviewed) links as published
   stats         quick health check
@@ -52,7 +54,17 @@ def main():
     elif cmd == "assemble":
         from .editor.assemble import build
         from .render.markdown import write
-        write(build())
+        from .review.daily import list_items
+        draft = build()
+        write(draft)
+        list_items(f"weekly:{draft['issue']}",
+                   [it["id"] for items in draft["sections"].values() for it in items])
+    elif cmd == "review-open":
+        from .review.daily import open_review
+        open_review()
+    elif cmd == "review-record":
+        from .review.daily import close_review
+        close_review(int(sys.argv[2]))
     elif cmd == "publish":
         if len(sys.argv) < 3:
             print("usage: dhd publish <issue-number>")

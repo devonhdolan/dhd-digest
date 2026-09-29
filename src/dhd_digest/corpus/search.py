@@ -4,6 +4,8 @@ Query per section, never globally. The four sections have very different
 acceptance bars - 52% of Tech items are fundraises, versus 1% of Entertainment -
 so a single global query blurs exactly the signal we want.
 """
+import psycopg
+
 from ..config import NEIGHBORS_PER_SECTION, SECTIONS
 from ..db.client import query
 
@@ -49,3 +51,35 @@ def style_examples(section: str, n: int = 30) -> list[dict]:
         (section, n),
     )
     return [{"blurb": r[0], "tag": r[1], "domain": r[2], "aside": r[3]} for r in rows]
+
+
+FEEDBACK_EXAMPLES = 6
+FEEDBACK_MIN_SIMILARITY = 0.5
+DOMAIN_RECORD_MIN = 5
+
+
+def editor_feedback(vector, domain: str) -> dict:
+    """The editor's own verdicts from review: the most similar reviewed
+    items, and their keep rate for this domain once there's enough of it.
+    Empty until review_items exists (init-db) and has verdicts."""
+    try:
+        return _editor_feedback(vector, domain)
+    except psycopg.errors.UndefinedTable:
+        return {"similar": [], "domain_record": None}
+
+
+def _editor_feedback(vector, domain: str) -> dict:
+    rows = query(
+        """SELECT c.blurb, c.domain, r.verdict, 1 - (c.embedding <=> %s::vector) AS sim
+           FROM review_items r JOIN candidates c ON c.id = r.candidate_id
+           WHERE r.verdict IS NOT NULL AND c.embedding IS NOT NULL
+           ORDER BY c.embedding <=> %s::vector LIMIT %s""",
+        (vector, vector, FEEDBACK_EXAMPLES))
+    similar = [{"blurb": b, "domain": d, "verdict": v, "similarity": round(float(sim), 3)}
+               for b, d, v, sim in rows if sim >= FEEDBACK_MIN_SIMILARITY]
+    kept, total = query(
+        """SELECT count(*) FILTER (WHERE r.verdict IN ('keep', 'rescue')), count(*)
+           FROM review_items r JOIN candidates c ON c.id = r.candidate_id
+           WHERE r.verdict IS NOT NULL AND c.domain = %s""", (domain,))[0]
+    record = {"domain": domain, "kept": kept, "total": total} if total >= DOMAIN_RECORD_MIN else None
+    return {"similar": similar, "domain_record": record}

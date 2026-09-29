@@ -9,7 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from ..config import (ANTHROPIC_API_KEY, BLURB_MAX_WORDS_BY_SECTION,
                       CONVERGENCE_BOOST, TRIAGE_MODEL)
 from ..corpus.embed import candidate_text, embed
-from ..corpus.search import best_section_prior, neighbors_by_section
+from ..corpus.search import best_section_prior, editor_feedback, neighbors_by_section
 from ..db.client import conn, query
 from ..validation import TriageJudgment, validate_triage_judgment
 from .prompts import SYSTEM, TRIAGE_TOOL, build_user_message
@@ -25,7 +25,8 @@ def client():
 
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(min=2, max=30))
-def judge(candidate: dict, neighbors: dict, prior: str) -> TriageJudgment:
+def judge(candidate: dict, neighbors: dict, prior: str,
+          feedback: dict | None = None) -> TriageJudgment:
     resp = client().messages.create(
         model=TRIAGE_MODEL,
         max_tokens=600,
@@ -33,7 +34,7 @@ def judge(candidate: dict, neighbors: dict, prior: str) -> TriageJudgment:
         tools=[TRIAGE_TOOL],
         tool_choice={"type": "tool", "name": "record_judgment"},
         messages=[{"role": "user",
-                   "content": build_user_message(candidate, neighbors, prior)}],
+                   "content": build_user_message(candidate, neighbors, prior, feedback)}],
     )
     for block in resp.content:
         if block.type == "tool_use":
@@ -69,14 +70,15 @@ def score_candidates(cands: list[dict], workers: int = 4):
     for cand, vec in zip(cands, vectors):
         try:
             nbrs = neighbors_by_section(vec)
-            prepared.append((cand, vec, nbrs, best_section_prior(nbrs)[0]))
+            prepared.append((cand, vec, nbrs, best_section_prior(nbrs)[0],
+                             editor_feedback(vec, cand["domain"])))
         except Exception as exc:
             print(f"  skip {cand['canonical_url']}: {exc}")
 
     def work(item):
-        cand, vec, nbrs, prior = item
+        cand, vec, nbrs, prior, feedback = item
         try:
-            out = judge(cand, nbrs, prior)
+            out = judge(cand, nbrs, prior, feedback)
         except Exception as exc:              # never let one link stop the run
             print(f"  skip {cand['canonical_url']}: {exc}")
             return None

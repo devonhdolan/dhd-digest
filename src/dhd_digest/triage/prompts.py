@@ -81,6 +81,7 @@ Blurb rules, derived from the archive:
 
 Scoring guidance. `fit` and `keep_score` are independent and each has its own bar, so be honest on both:
 - A funding story's resemblance to archive raises is about format. Its fit is about the company. Do not let one inflate the other.
+- When the editor's own recent verdicts are shown, weigh them first: a close match to something they CUT should score low on fit, and a close match to something they KEPT or PULLED IN high. A domain they mostly cut is weak evidence against; one they mostly keep, weak evidence for.
 - Score keep_score high when several close historical neighbours exist and the item is new information.
 - Score low for press-release padding, roundups of things already covered, listicles, and anything whose only claim is that it is trending.
 - Score low when the nearest neighbours are all weak matches. Absence of resemblance is evidence.
@@ -88,7 +89,8 @@ Scoring guidance. `fit` and `keep_score` are independent and each has its own ba
 - In Tech and Entertainment, the early signal beats the story everyone already ran. In Media, the big headline is the point."""
 
 
-def build_user_message(candidate: dict, neighbors: dict, prior: str) -> str:
+def build_user_message(candidate: dict, neighbors: dict, prior: str,
+                       feedback: dict | None = None) -> str:
     lines = [
         "CANDIDATE",
         f"  headline: {candidate.get('headline') or candidate.get('anchor_text')}",
@@ -106,6 +108,16 @@ def build_user_message(candidate: dict, neighbors: dict, prior: str) -> str:
         lines.append(f"\n  {section}:")
         for n in items[:8]:
             lines.append(f"    [{n['similarity']:.2f}] {n['blurb']}  ({n['domain']}, {n['date']})")
+    feedback = feedback or {}
+    if feedback.get("similar") or feedback.get("domain_record"):
+        lines += ["", "THE EDITOR'S OWN RECENT VERDICTS (from their daily review - these outrank "
+                      "the archive where they disagree)"]
+        for f in feedback.get("similar") or []:
+            word = {"keep": "KEPT", "cut": "CUT", "rescue": "PULLED IN"}[f["verdict"]]
+            lines.append(f"    {word:9s} [{f['similarity']:.2f}] {f['blurb']}  ({f['domain']})")
+        rec = feedback.get("domain_record")
+        if rec:
+            lines.append(f"    Record on {rec['domain']}: kept {rec['kept']} of {rec['total']} reviewed.")
     cap = BLURB_MAX_WORDS_BY_SECTION
     lines += [
         "",

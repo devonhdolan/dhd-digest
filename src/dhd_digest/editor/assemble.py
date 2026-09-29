@@ -114,6 +114,8 @@ def pool(section: str, limit: int) -> list[dict]:
            FROM candidates
            WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL AND NOT pinned
              AND section = %s AND keep_score >= %s AND fit_score >= %s
+             AND NOT EXISTS (SELECT 1 FROM review_items r
+                             WHERE r.candidate_id = candidates.id AND r.verdict = 'cut')
              AND first_seen_at > now() - make_interval(days => %s)
            ORDER BY keep_score DESC, fit_score DESC LIMIT %s""",
         # Over-fetch: the domain cap and bad-link filter cut some.
@@ -203,6 +205,16 @@ def publish(issue: int, drafts_dir: str = "drafts") -> int:
     if not ids:
         print(f"no surviving items found in {path} - nothing to publish")
         return 0
+
+    # The review pass is a verdict on every drafted item: kept or cut.
+    # (Drafts assembled before review_items existed have nothing listed.)
+    from ..review.daily import record
+    listed = [r[0] for r in query(
+        "SELECT candidate_id FROM review_items WHERE review = %s", (f"weekly:{issue}",))]
+    counts = record(f"weekly:{issue}", {cid: ("keep" if cid in set(ids) else "cut")
+                                        for cid in listed})
+    if listed:
+        print(f"review verdicts: {counts['keep']} kept, {counts['cut']} cut")
 
     with conn().cursor() as cur:
         cur.execute("UPDATE candidates SET used_in_issue=%s WHERE id = ANY(%s)",
