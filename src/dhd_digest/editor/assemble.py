@@ -6,11 +6,11 @@ from pathlib import Path
 import anthropic
 
 from ..config import (ANTHROPIC_API_KEY, CANDIDATE_MAX_AGE_DAYS,
-                      DOMAIN_CAP_DEFAULT, EDITOR_MODEL, MIN_KEEP_SCORE,
+                      DOMAIN_CAP_DEFAULT, EDITOR_MODEL, MIN_FIT, MIN_KEEP_SCORE,
                       SECTION_MIX, SECTIONS, TARGET_LINKS_PER_ISSUE)
 from ..corpus.search import style_examples
 from ..db.client import conn, query
-from ..ingest.normalize import is_stale, is_tracker_url, url_date
+from ..ingest.normalize import canonicalize, is_stale, is_tracker_url, url_date
 from ..render.markdown import parse_published
 from ..validation import validate_section_selection
 from .prompts import SECTION_TOOL, SYSTEM, build_user_message
@@ -71,27 +71,77 @@ def cap_per_domain(items: list[dict], caps: dict[str, int], limit: int) -> list[
     return out
 
 
-def pool(section: str, limit: int) -> list[dict]:
-    # Over-fetch: the domain cap and the tracker/stale filters below cut some.
+def bad_link(url: str) -> bool:
+    """Links today's ingest would refuse: trackers, junk and personal links,
+    stale dates. Stored candidates can predate those checks."""
+    return (is_tracker_url(url) or canonicalize(url) is None
+            or is_stale(url_date(url)))
+
+
+def select_pool(items: list[dict], caps: dict[str, int], limit: int,
+                min_score: float = MIN_KEEP_SCORE,
+                min_fit: float | None = MIN_FIT) -> list[dict]:
+    """What the section editor gets offered: on the beat (fit), above the
+    resemblance bar, no bad links, best first, at most caps[domain] per
+    domain. min_fit=None skips the fit gate (scores from before it existed)."""
+    items = sorted((it for it in items if it["keep_score"] >= min_score
+                    and (min_fit is None or (it.get("fit") or 0) >= min_fit)
+                    and not bad_link(it["canonical_url"])),
+                   key=lambda it: (it["keep_score"], it.get("fit") or 0), reverse=True)
+    return cap_per_domain(items, caps, limit)
+
+
+def picks(section: str) -> list[dict]:
+    """Links the editor forwarded in, for this section. No bars, no age
+    window, no domain cap: they stay until published. A pick triage never
+    reached (or failed on) lands in Collaborative on its headline."""
     rows = query(
-        """SELECT id, blurb, domain, keep_score, canonical_url
+        """SELECT id, coalesce(blurb, headline, anchor_text, canonical_url), domain,
+                  coalesce(keep_score, 10), canonical_url, coalesce(fit_score, 10)
            FROM candidates
-           WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL
-             AND section = %s AND keep_score >= %s
+           WHERE pinned AND used_in_issue IS NULL
+             AND (section = %s OR (section IS NULL AND %s = 'Collaborative'))
+           ORDER BY first_seen_at""",
+        (section, section))
+    return [{**dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url", "fit"], r)),
+             "pinned": True} for r in rows]
+
+
+def pool(section: str, limit: int) -> list[dict]:
+    """The editor's picks, then the best of everything else."""
+    rows = query(
+        """SELECT id, blurb, domain, keep_score, canonical_url, fit_score
+           FROM candidates
+           WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL AND NOT pinned
+             AND section = %s AND keep_score >= %s AND fit_score >= %s
+             AND NOT EXISTS (SELECT 1 FROM review_items r
+                             WHERE r.candidate_id = candidates.id AND r.verdict = 'cut')
              AND first_seen_at > now() - make_interval(days => %s)
-           ORDER BY keep_score DESC LIMIT %s""",
-        (section, MIN_KEEP_SCORE, CANDIDATE_MAX_AGE_DAYS, limit * 4))
-    items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url"], r))
+           ORDER BY keep_score DESC, fit_score DESC LIMIT %s""",
+        # Over-fetch: the domain cap and bad-link filter cut some.
+        (section, MIN_KEEP_SCORE, MIN_FIT, CANDIDATE_MAX_AGE_DAYS, limit * 4))
+    items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url", "fit"], r))
              for r in rows]
-    # Candidates ingested before tracker unwrapping and date checks existed.
-    items = [it for it in items if not is_tracker_url(it["canonical_url"])
-             and not is_stale(url_date(it["canonical_url"]))]
-    return cap_per_domain(items, domain_caps(section), limit)
+    return picks(section) + select_pool(items, domain_caps(section), limit)
+
+
+def with_picks(chosen: list[dict], items: list[dict]) -> list[dict]:
+    """Every pick in the pool ends up in the section, whatever the editor
+    model returned: missing ones are added at the end on their triage blurb."""
+    have = {c["id"] for c in chosen}
+    missing = [it for it in items if it.get("pinned") and it["id"] not in have]
+    for it in missing:
+        print(f"    pick {it['id']} was left out by the editor - adding it back")
+    return chosen + missing
+
+
+def pool_size(target: int) -> int:
+    """Over-supply the editor so it has room to cut."""
+    return int(target * 1.8)
 
 
 def edit_section(section: str, target: int) -> list[dict]:
-    # Over-supply the editor so it has room to cut.
-    items = pool(section, int(target * 1.8))
+    items = pool(section, pool_size(target))
     if not items:
         return []
     resp = client().messages.create(
@@ -106,8 +156,8 @@ def edit_section(section: str, target: int) -> list[dict]:
     raw = next(b.input for b in resp.content if b.type == "tool_use")
     by_id = {i["id"]: i for i in items}
     chosen = validate_section_selection(raw, pool_ids=set(by_id), target=target)
-    return [{**by_id[entry.id], "blurb": entry.blurb, "section": section}
-            for entry in chosen]
+    out = [{**by_id[entry.id], "blurb": entry.blurb} for entry in chosen]
+    return [{**it, "section": section} for it in with_picks(out, items)]
 
 
 def tag_for(domain: str) -> str:
@@ -155,6 +205,16 @@ def publish(issue: int, drafts_dir: str = "drafts") -> int:
     if not ids:
         print(f"no surviving items found in {path} - nothing to publish")
         return 0
+
+    # The review pass is a verdict on every drafted item: kept or cut.
+    # (Drafts assembled before review_items existed have nothing listed.)
+    from ..review.daily import record
+    listed = [r[0] for r in query(
+        "SELECT candidate_id FROM review_items WHERE review = %s", (f"weekly:{issue}",))]
+    counts = record(f"weekly:{issue}", {cid: ("keep" if cid in set(ids) else "cut")
+                                        for cid in listed})
+    if listed:
+        print(f"review verdicts: {counts['keep']} kept, {counts['cut']} cut")
 
     with conn().cursor() as cur:
         cur.execute("UPDATE candidates SET used_in_issue=%s WHERE id = ANY(%s)",

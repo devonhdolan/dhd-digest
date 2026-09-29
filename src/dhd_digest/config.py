@@ -30,7 +30,13 @@ BLURB_MAX_WORDS_BY_SECTION = {
     "Tech": 12, "Media": 12, "Entertainment": 14, "Collaborative": 11,
 }
 
+# A ceiling: sections are filled up to their share of this, never padded.
 TARGET_LINKS_PER_ISSUE = 150
+# Two separate bars. fit >= 7: at least adjacent to the beat (triage rubric).
+# keep_score (resemblance) >= 6: the kind of thing the editor published.
+# Folding them into one min(fit, resemblance) >= 7 cut on-beat Media and
+# Entertainment items, because resemblance runs a point lower than fit.
+MIN_FIT = 7
 MIN_KEEP_SCORE = 6
 
 # Freshness. Newsletter footers and "popular posts" blocks link years-old

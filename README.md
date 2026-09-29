@@ -26,6 +26,7 @@ feeds + newsletter inbox
 | Section mix, stable ±3pts for 5 years | Collab 37.1 / Tech 22.5 / Ent 20.6 / Media 19.7 | `config.SECTION_MIX` |
 | Blurb length | median 8 words, p99 17 | `config.BLURB_MAX_WORDS_BY_SECTION` |
 | Tech items that are fundraises | 52.5% | `triage/prompts.py` section brief |
+| Tech items about media, music, games, video, creators, ads or sport | ~60% (keyword estimate) | `fit` score in `triage/prompts.py`; pool requires fit ≥ `config.MIN_FIT` |
 | Entertainment items that are fundraises | 1.0% | same |
 | URLs ever repeated | 102 of 29,819 | `seen_urls`, seeded at load |
 | Links from one domain in one section of an issue, p90 | 3 overall; per domain from the archive | `config.DOMAIN_CAP_DEFAULT`, `editor/assemble.py:domain_caps` |
@@ -64,9 +65,13 @@ migrate to the Gmail API eventually.
 
 Either way, subscribe to: StrictlyVC, Future Party, DealBook, Axios Pro Rata and
 Media Trends, The Ankler, Puck, Stratechery, The Information, Screentime,
-Matthew Ball, Digital Native, The Generalist. Add straight RSS for the top
-domains — Deadline, Variety, THR, TechCrunch, The Verge, VentureBeat, IndieWire —
-which are ~47% of the archive between them and don't depend on send schedules.
+Matthew Ball, Digital Native, The Generalist.
+
+The trades are read directly as RSS, whichever inbox path you use:
+`data/feeds.csv` lists Deadline, Variety, THR, IndieWire, TheWrap and
+TechCrunch's media & entertainment feed. Newsletters carry little trade
+dealflow, so without these Entertainment runs thin. `uv run dhd feeds` checks
+the list without writing anything.
 
 Paid newsletters tied to your real address usually can't be re-subscribed under
 a second one. Handle those with a forwarding filter on your primary Gmail:
@@ -83,6 +88,60 @@ uv run dhd assemble    # writes drafts/issue-251.md
 **5. Schedule.** Add `DATABASE_URL`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, and
 your ingestion credentials as repo secrets. The two workflows then run daily at
 6am and Sunday at 6pm Pacific. The weekly job opens a PR rather than publishing.
+
+## Daily review (teaching the curation)
+
+After each daily run, a GitHub issue titled **Daily review – <date>** lists
+up to 40 items that cleared triage since the last review, by section, plus
+up to 8 near misses.
+
+- **Tick anything that shouldn't be in the dossier**, then close the issue.
+  Unticked items count as keeps. Ticked near misses are pulled in.
+- **Skip a day:** close it as *not planned*. Nothing is recorded.
+- Closing runs **record-review**, which stores every verdict and comments
+  the tally.
+- **What your verdicts do:** a cut item never reaches a draft, and a pulled-in
+  near miss is pinned for the next one. Triage then shows your verdicts on the
+  most similar past items, and your keep rate for the candidate's domain, next
+  to the archive examples. It weighs yours first.
+- **The weekly draft counts too:** `dhd publish N` records what you kept and
+  cut in draft N the same way.
+
+Checkboxes work in the GitHub mobile app, so a day's review is a couple of
+minutes of tapping. There are no extra model calls; the only added cost is
+a few hundred tokens of context per triage call.
+
+## Forwarding links in (picks)
+
+Email a link to the digest inbox and it goes in the next draft, whatever
+triage thinks of it. Picks skip the scoring bars, section limits, the domain
+cap and the age window, and the editor model is told to keep them.
+
+- **Counts as a pick:** mail from an address in the `OWNER_EMAILS` secret
+  (comma-separated), or anything with a `Fwd:`/`FW:` subject. Newsletters
+  auto-forwarded by a Gmail filter keep their own sender, so they don't count.
+- **Which link:** any link you type above the forwarded part wins; your
+  signature and links on your own email domain are ignored. With nothing
+  typed, a forwarded email with up to 3 links is pinned whole. A forwarded
+  newsletter with more is ambiguous and goes through normal scoring, so put
+  the link you want at the top.
+- **Where it's read:** the inbox (`IMAP_PICKS_FOLDER`, default `INBOX`) as
+  well as `IMAP_FOLDER`. The Sunday job ingests again right before
+  assembling, so a link forwarded Sunday afternoon still makes that night's
+  draft.
+- A pick already published in an earlier issue is skipped and logged.
+
+## Changing the scoring
+
+Triage gives each link two scores: `fit` (is it on the beat: the creative
+and media industries and the tech reshaping them) and resemblance (did the
+editor publish things like it). The stored `keep_score` is the lower of the two.
+
+Any PR touching triage, retrieval, the editor or `config.py` runs the
+**rescore** workflow in compare mode. It re-scores the week's candidates with
+the PR's code and posts a before/after report as the job summary. Nothing is
+written. After merging, run **rescore → apply** once, so candidates already
+scored the old way get re-triaged before the next draft.
 
 ## The human pass
 

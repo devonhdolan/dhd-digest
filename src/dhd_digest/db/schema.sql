@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS candidates (
     triaged_at    TIMESTAMPTZ,
     used_in_issue INT
 );
+-- Added after launch: subject fit (1-10), gated separately from keep_score.
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS fit_score REAL;
+-- Links the editor forwarded in: always included in the next draft.
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS cand_untriaged_idx ON candidates (triaged_at)
     WHERE triaged_at IS NULL;
 CREATE INDEX IF NOT EXISTS cand_open_idx ON candidates (keep_score DESC)
@@ -69,3 +73,17 @@ CREATE TABLE IF NOT EXISTS fetch_state (
     last_id    TEXT,
     last_run   TIMESTAMPTZ
 );
+
+-- The editor's own verdicts: every item shown for review (daily issue or
+-- weekly draft), and what they decided. verdict is NULL until reviewed:
+-- 'keep' | 'cut' (shown in the pool) or 'rescue' (a near miss they pulled in).
+CREATE TABLE IF NOT EXISTS review_items (
+    candidate_id  BIGINT NOT NULL REFERENCES candidates(id),
+    review        TEXT NOT NULL,          -- 'daily:<issue>' or 'weekly:<issue>'
+    near_miss     BOOLEAN NOT NULL DEFAULT FALSE,
+    listed_at     TIMESTAMPTZ DEFAULT now(),
+    verdict       TEXT,
+    reviewed_at   TIMESTAMPTZ,
+    PRIMARY KEY (candidate_id, review)
+);
+CREATE INDEX IF NOT EXISTS review_verdict_idx ON review_items (verdict) WHERE verdict IS NOT NULL;

@@ -1,0 +1,27 @@
+name: record-review
+# Closing a daily review issue records the editor's verdicts. Closing it as
+# "not planned" skips the day: nothing is recorded.
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write        # posts the "recorded" comment
+
+jobs:
+  record:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'daily-review') &&
+      github.event.issue.state_reason != 'not_planned'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run dhd init-db
+      - run: uv run dhd review-record ${{ github.event.issue.number }}

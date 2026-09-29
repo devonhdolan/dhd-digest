@@ -6,3 +6,4 @@ __pycache__/
 .neon
 .env.local
 .DS_Store
+compare-report.md

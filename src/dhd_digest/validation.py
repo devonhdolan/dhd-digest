@@ -24,6 +24,7 @@ TRAILING_TAG = re.compile(r"\s*\[[^\[\]]{1,12}\]\s*$")
 
 class TriageJudgment(BaseModel):
     section: str
+    fit: int = Field(ge=1, le=10)
     keep_score: int = Field(ge=1, le=10)
     blurb: str = Field(min_length=1)
     reasoning: str = Field(min_length=1)
