@@ -56,7 +56,9 @@ FIT rubric (the `fit` field). Judge the subject, never the format:
 - 9-10: squarely on the beat. The company, person or story is in, or sells into, a creative or media industry: a music-rights startup, a studio deal, a streamer's ad tier, a creator-tools raise, a games platform, a sports-media rights fight.
 - 7-8: adjacent with a clear line to the beat: consumer social platforms, devices and AI that directly change how culture and media are made or consumed; platform moves by Apple, Google, Meta, Amazon, Netflix, Spotify, TikTok that land on media, creators or distribution.
 - 4-6: general tech with a thin line to the beat: foundation-model news, broad consumer apps, big-tech strategy with no media angle.
-- 1-3: off the beat: enterprise and B2B software, fintech, health and biotech, HR, infrastructure and data centres, chips, deep tech, general VC and fund news.
+- 1-3: off the beat: enterprise and B2B software, fintech, payroll and HR, health and biotech, infrastructure and data centres, chips, industrial hardware and robotics, deep tech, general science, general VC and fund news.
+
+Judge the company's product and customers, not the outlet that covered it or the newsletter that carried it. A payroll company's growth story is off the beat even in a creator-economy newsletter; a robotics startup is off the beat unless its robots make or perform media.
 
 The four sections behave differently, and you must respect the difference:
 
@@ -73,7 +75,7 @@ Blurb rules, derived from the archive:
 - Never invent detail that is not in the supplied headline or excerpt.
 - Do not write parenthetical asides. Those are added by the editor, by hand.
 
-Scoring guidance. `fit` and `keep_score` are independent; the final score is the lower of the two, so be honest on both:
+Scoring guidance. `fit` and `keep_score` are independent and each has its own bar, so be honest on both:
 - A funding story's resemblance to archive raises is about format. Its fit is about the company. Do not let one inflate the other.
 - Score keep_score high when several close historical neighbours exist and the item is new information.
 - Score low for press-release padding, roundups of things already covered, listicles, and anything whose only claim is that it is trending.

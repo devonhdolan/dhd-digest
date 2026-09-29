@@ -8,16 +8,27 @@ def judgment(fit, resemblance):
                                      "blurb": "x", "reasoning": "y"})
 
 
-def test_final_score_is_the_lower_of_fit_and_resemblance():
-    assert final_score(judgment(fit=2, resemblance=9), n_sources=1) == 2.0
-    assert final_score(judgment(fit=9, resemblance=6), n_sources=1) == 6.0
-
-
-def test_multi_source_boost_never_lifts_past_fit():
-    # Eight newsletters carrying an off-beat story doesn't put it on the beat.
-    assert final_score(judgment(fit=3, resemblance=8), n_sources=8) == 3.0
+def test_final_score_is_resemblance_plus_boost():
+    assert final_score(judgment(fit=2, resemblance=9), n_sources=1) == 9.0
     assert final_score(judgment(fit=9, resemblance=6), n_sources=3) == 7.5
     assert final_score(judgment(fit=10, resemblance=10), n_sources=5) == 10.0
+
+
+def test_pool_gates_on_fit_and_resemblance_separately():
+    from dhd_digest.editor.assemble import select_pool
+
+    def item(i, fit, score, url="https://variety.com/2026/x"):
+        return {"id": i, "fit": fit, "keep_score": score, "domain": f"d{i}.com",
+                "canonical_url": url + str(i)}
+
+    items = [item(1, fit=2, score=10),   # well-shaped, off the beat
+             item(2, fit=7, score=6),    # on the beat, resemblance at the bar
+             item(3, fit=9, score=5),    # on the beat, below resemblance bar
+             item(4, fit=8, score=9),
+             item(5, fit=8, score=9, url="https://spyglass.org/r/1af18231?m=")]  # tracker
+    assert [it["id"] for it in select_pool(items, {}, 10)] == [4, 2]
+    # min_fit=None: scores from before fit existed
+    assert [it["id"] for it in select_pool(items, {}, 10, min_fit=None)] == [1, 4, 2]
 
 
 def test_fit_is_required():

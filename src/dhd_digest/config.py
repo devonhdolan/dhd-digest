@@ -32,9 +32,12 @@ BLURB_MAX_WORDS_BY_SECTION = {
 
 # A ceiling: sections are filled up to their share of this, never padded.
 TARGET_LINKS_PER_ISSUE = 150
-# keep_score is min(fit, resemblance), so 7 means "at least adjacent to the beat
-# and clearly the kind of thing the editor published".
-MIN_KEEP_SCORE = 7
+# Two separate bars. fit >= 7: at least adjacent to the beat (triage rubric).
+# keep_score (resemblance) >= 6: the kind of thing the editor published.
+# Folding them into one min(fit, resemblance) >= 7 cut on-beat Media and
+# Entertainment items, because resemblance runs a point lower than fit.
+MIN_FIT = 7
+MIN_KEEP_SCORE = 6
 
 # Freshness. Newsletter footers and "popular posts" blocks link years-old
 # pieces; drop anything whose URL or page metadata dates it past this.

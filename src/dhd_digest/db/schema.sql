@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     triaged_at    TIMESTAMPTZ,
     used_in_issue INT
 );
--- Added after launch: subject fit (1-10) behind keep_score = min(fit, resemblance).
+-- Added after launch: subject fit (1-10), gated separately from keep_score.
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS fit_score REAL;
 CREATE INDEX IF NOT EXISTS cand_untriaged_idx ON candidates (triaged_at)
     WHERE triaged_at IS NULL;

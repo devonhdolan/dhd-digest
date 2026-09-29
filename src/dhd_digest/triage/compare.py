@@ -12,15 +12,15 @@ import os
 from collections import Counter
 from pathlib import Path
 
-from ..config import CANDIDATE_MAX_AGE_DAYS, MIN_KEEP_SCORE, SECTIONS
+from ..config import CANDIDATE_MAX_AGE_DAYS, MIN_FIT, MIN_KEEP_SCORE, SECTIONS
 from ..db.client import query
-from ..editor.assemble import domain_caps, pool_size, quotas, select_pool
+from ..editor.assemble import bad_link, domain_caps, pool_size, quotas, select_pool
 from ..render.markdown import parse_published
 from .score import CANDIDATE_COLUMNS, score_candidates
 
 # The bar before this change. Anything the old scoring put below RESCORE_FLOOR
-# can't clear the new bar (new score <= fit and <= resemblance, and resemblance
-# is the old judgment), so it isn't worth a model call.
+# is very unlikely to clear the new resemblance bar (resemblance is the old
+# judgment, re-asked), so it isn't worth a model call.
 OLD_MIN_KEEP_SCORE = 6
 RESCORE_FLOOR = 5
 LIST_LIMIT = 40
@@ -76,22 +76,24 @@ def run(draft: str | None = None, days: int = CANDIDATE_MAX_AGE_DAYS,
     for s in SECTIONS:
         caps, size = domain_caps(s), pool_size(q[s])
         pools_old[s] = select_pool([i for i in old if i["section"] == s], caps, size,
-                                   OLD_MIN_KEEP_SCORE)
+                                   OLD_MIN_KEEP_SCORE, min_fit=None)
         pools_new[s] = select_pool([i for i in new if i["section"] == s], caps, size)
 
     md = [f"# Scoring comparison — last {days} days",
           "",
           f"{len(new)} open candidates re-scored (of {len(cands)} with a stored "
           f"score of {RESCORE_FLOOR}+). Old bar: score ≥ {OLD_MIN_KEEP_SCORE}. "
-          f"New bar: min(fit, resemblance) ≥ {MIN_KEEP_SCORE}. "
+          f"New bar: fit ≥ {MIN_FIT} and resemblance ≥ {MIN_KEEP_SCORE}. "
           "“Pool” is what the section editor is offered: best first, capped per "
-          "domain, up to 1.8× the section's slots.",
+          "domain, up to 1.8× the section's slots. Both pools drop tracker, junk "
+          "and stale links, so differences here are down to scoring alone.",
           "",
           "| Section | Slots | Eligible before | Eligible after | Pool before | Pool after |",
           "|---|---|---|---|---|---|"]
     for s in SECTIONS:
         elig_old = sum(1 for i in old if i["section"] == s and i["keep_score"] >= OLD_MIN_KEEP_SCORE)
-        elig_new = sum(1 for i in new if i["section"] == s and i["keep_score"] >= MIN_KEEP_SCORE)
+        elig_new = sum(1 for i in new if i["section"] == s and i["fit"] >= MIN_FIT
+                       and i["keep_score"] >= MIN_KEEP_SCORE)
         md.append(f"| {s} | {q[s]} | {elig_old} | {elig_new} | "
                   f"{len(pools_old[s])} | {len(pools_new[s])} |")
 
@@ -125,24 +127,40 @@ def run(draft: str | None = None, days: int = CANDIDATE_MAX_AGE_DAYS,
     if draft_items:
         items = draft_items
         in_new_pool = {i["id"] for s in SECTIONS for i in pools_new[s]}
-        verdicts = {"stays": [], "out": [], "not re-scored": []}
+        labels = {"stays": "Still offered to the editor",
+                  "bad link": "Out: tracker, junk or stale link (link filters, not scoring)",
+                  "off beat": f"Out: off the beat (fit < {MIN_FIT})",
+                  "resemblance": f"Out: on the beat but resemblance < {MIN_KEEP_SCORE}",
+                  "squeezed": "Out: cleared both bars but lost to better items or the domain cap",
+                  "not re-scored": "Not re-scored"}
+        verdicts = {k: [] for k in labels}
         for it in items:
             n = new_by_id.get(it["id"])
             if n is None:
                 verdicts["not re-scored"].append(f"- {it['blurb']}")
-            elif it["id"] in in_new_pool:
-                verdicts["stays"].append(f"- {it['blurb']} · {n['section']}, fit {n['fit']}")
+                continue
+            detail = f" · {n['section']}, fit {n['fit']}, resemblance {n['resemblance']}"
+            if it["id"] in in_new_pool:
+                key = "stays"
+            elif bad_link(n["canonical_url"]):
+                key = "bad link"
+            elif n["fit"] < MIN_FIT:
+                key = "off beat"
+            elif n["keep_score"] < MIN_KEEP_SCORE:
+                key = "resemblance"
             else:
-                verdicts["out"].append(
-                    f"- {it['blurb']} · fit {n['fit']}, resemblance {n['resemblance']}  \n"
-                    f"  _{n['reasoning']}_")
+                key = "squeezed"
+            line_ = f"- {it['blurb']}{detail}"
+            if key in ("off beat", "resemblance"):
+                line_ += f"  \n  _{n['reasoning']}_"
+            verdicts[key].append(line_)
         md += ["", f"## Draft {Path(draft).name} under the new scoring", "",
-               f"Of {len(items)} items: {len(verdicts['stays'])} would still be offered "
-               f"to the editor, {len(verdicts['out'])} would not.", ""]
-        for label in ("out", "stays", "not re-scored"):
-            if verdicts[label]:
-                md += [f"### {label.capitalize()} ({len(verdicts[label])})", ""]
-                md += verdicts[label] + [""]
+               f"Of {len(items)} items: " + ", ".join(
+                   f"{len(v)} {k}" for k, v in verdicts.items() if v) + ".", ""]
+        for key, label in labels.items():
+            if verdicts[key]:
+                md += [f"### {label} ({len(verdicts[key])})", ""]
+                md += verdicts[key] + [""]
 
     report = "\n".join(md) + "\n"
     Path(out_path).write_text(report)

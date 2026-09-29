@@ -48,11 +48,11 @@ def trim_blurb(blurb: str, section: str) -> str:
 
 
 def final_score(out: TriageJudgment, n_sources: int) -> float:
-    """The lower of fit and resemblance, so a well-shaped item off the beat
-    can't score its way in. The multi-source boost lifts resemblance only and
-    never past fit: lots of newsletters carrying a story doesn't put it on-beat."""
+    """Resemblance plus the multi-source boost. Fit is not folded in: it is
+    stored separately and gates the pool on its own (MIN_FIT), so an off-beat
+    item stays out however well-shaped or widely carried it is."""
     resemblance = out.keep_score + CONVERGENCE_BOOST * max(n_sources - 1, 0)
-    return min(float(out.fit), resemblance, 10.0)
+    return min(resemblance, 10.0)
 
 
 CANDIDATE_COLUMNS = ["id", "canonical_url", "domain", "anchor_text", "headline",

@@ -26,7 +26,7 @@ feeds + newsletter inbox
 | Section mix, stable ±3pts for 5 years | Collab 37.1 / Tech 22.5 / Ent 20.6 / Media 19.7 | `config.SECTION_MIX` |
 | Blurb length | median 8 words, p99 17 | `config.BLURB_MAX_WORDS_BY_SECTION` |
 | Tech items that are fundraises | 52.5% | `triage/prompts.py` section brief |
-| Tech items about media, music, games, video, creators, ads or sport | ~60% (keyword estimate) | `fit` score in `triage/prompts.py`; keep_score = min(fit, resemblance) |
+| Tech items about media, music, games, video, creators, ads or sport | ~60% (keyword estimate) | `fit` score in `triage/prompts.py`; pool requires fit ≥ `config.MIN_FIT` |
 | Entertainment items that are fundraises | 1.0% | same |
 | URLs ever repeated | 102 of 29,819 | `seen_urls`, seeded at load |
 | Links from one domain in one section of an issue, p90 | 3 overall; per domain from the archive | `config.DOMAIN_CAP_DEFAULT`, `editor/assemble.py:domain_caps` |

@@ -6,11 +6,11 @@ from pathlib import Path
 import anthropic
 
 from ..config import (ANTHROPIC_API_KEY, CANDIDATE_MAX_AGE_DAYS,
-                      DOMAIN_CAP_DEFAULT, EDITOR_MODEL, MIN_KEEP_SCORE,
+                      DOMAIN_CAP_DEFAULT, EDITOR_MODEL, MIN_FIT, MIN_KEEP_SCORE,
                       SECTION_MIX, SECTIONS, TARGET_LINKS_PER_ISSUE)
 from ..corpus.search import style_examples
 from ..db.client import conn, query
-from ..ingest.normalize import is_stale, is_tracker_url, url_date
+from ..ingest.normalize import canonicalize, is_stale, is_tracker_url, url_date
 from ..render.markdown import parse_published
 from ..validation import validate_section_selection
 from .prompts import SECTION_TOOL, SYSTEM, build_user_message
@@ -71,29 +71,37 @@ def cap_per_domain(items: list[dict], caps: dict[str, int], limit: int) -> list[
     return out
 
 
+def bad_link(url: str) -> bool:
+    """Links today's ingest would refuse: trackers, junk and personal links,
+    stale dates. Stored candidates can predate those checks."""
+    return (is_tracker_url(url) or canonicalize(url) is None
+            or is_stale(url_date(url)))
+
+
 def select_pool(items: list[dict], caps: dict[str, int], limit: int,
-                min_score: float = MIN_KEEP_SCORE) -> list[dict]:
-    """What the section editor gets offered: above the bar, best first, no
-    trackers or stale links (candidates ingested before those checks existed),
-    at most caps[domain] per domain."""
+                min_score: float = MIN_KEEP_SCORE,
+                min_fit: float | None = MIN_FIT) -> list[dict]:
+    """What the section editor gets offered: on the beat (fit), above the
+    resemblance bar, no bad links, best first, at most caps[domain] per
+    domain. min_fit=None skips the fit gate (scores from before it existed)."""
     items = sorted((it for it in items if it["keep_score"] >= min_score
-                    and not is_tracker_url(it["canonical_url"])
-                    and not is_stale(url_date(it["canonical_url"]))),
-                   key=lambda it: it["keep_score"], reverse=True)
+                    and (min_fit is None or (it.get("fit") or 0) >= min_fit)
+                    and not bad_link(it["canonical_url"])),
+                   key=lambda it: (it["keep_score"], it.get("fit") or 0), reverse=True)
     return cap_per_domain(items, caps, limit)
 
 
 def pool(section: str, limit: int) -> list[dict]:
     rows = query(
-        """SELECT id, blurb, domain, keep_score, canonical_url
+        """SELECT id, blurb, domain, keep_score, canonical_url, fit_score
            FROM candidates
            WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL
-             AND section = %s AND keep_score >= %s
+             AND section = %s AND keep_score >= %s AND fit_score >= %s
              AND first_seen_at > now() - make_interval(days => %s)
-           ORDER BY keep_score DESC LIMIT %s""",
-        # Over-fetch: the domain cap and tracker/stale filters cut some.
-        (section, MIN_KEEP_SCORE, CANDIDATE_MAX_AGE_DAYS, limit * 4))
-    items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url"], r))
+           ORDER BY keep_score DESC, fit_score DESC LIMIT %s""",
+        # Over-fetch: the domain cap and bad-link filter cut some.
+        (section, MIN_KEEP_SCORE, MIN_FIT, CANDIDATE_MAX_AGE_DAYS, limit * 4))
+    items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url", "fit"], r))
              for r in rows]
     return select_pool(items, domain_caps(section), limit)
 
