@@ -7,6 +7,7 @@ latest items, and anything already a candidate is dropped at dedup before it
 costs a fetch or a model call.
 """
 import csv
+import re
 from calendar import timegm
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -18,6 +19,12 @@ from selectolax.parser import HTMLParser
 from .normalize import is_stale
 
 FEEDS = Path(__file__).resolve().parents[3] / "data" / "feeds.csv"
+# Trade-feed staples the digest never runs. Dropped on the headline alone, so
+# they never cost a page fetch, an embedding or a model call.
+SKIP_TITLES = re.compile(
+    r"\breview\b|\bphotos?\b|\bgallery\b|how to watch|where to (watch|stream)|"
+    r"streaming (guide|this week)|\bquiz\b|\bhoroscope|\bcrossword\b|\brecap\b",
+    re.I)
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; dhd-digest/0.1; +RSS reader)"}
 
 
@@ -35,12 +42,13 @@ def parse_feed(content: bytes, name: str) -> list[dict]:
     out = []
     for e in feedparser.parse(content).entries:
         link = e.get("link") or ""
-        if not link or is_stale(_published(e)):
+        title = (e.get("title") or "").strip()
+        if not link or is_stale(_published(e)) or SKIP_TITLES.search(title):
             continue
         summary = HTMLParser(e.get("summary") or "").text() or ""
         out.append({
             "raw_url": link,
-            "anchor_text": (e.get("title") or "").strip()[:200],
+            "anchor_text": title[:200],
             "context": " ".join(summary.split())[:400],
             "source": name,
             "source_title": name,

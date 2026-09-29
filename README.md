@@ -89,6 +89,26 @@ uv run dhd assemble    # writes drafts/issue-251.md
 your ingestion credentials as repo secrets. The two workflows then run daily at
 6am and Sunday at 6pm Pacific. The weekly job opens a PR rather than publishing.
 
+## Forwarding links in (picks)
+
+Email a link to the digest inbox and it goes in the next draft, whatever
+triage thinks of it. Picks skip the scoring bars, section limits, the domain
+cap and the age window, and the editor model is told to keep them.
+
+- **Counts as a pick:** mail from an address in the `OWNER_EMAILS` secret
+  (comma-separated), or anything with a `Fwd:`/`FW:` subject. Newsletters
+  auto-forwarded by a Gmail filter keep their own sender, so they don't count.
+- **Which link:** any link you type above the forwarded part wins; your
+  signature and links on your own email domain are ignored. With nothing
+  typed, a forwarded email with up to 3 links is pinned whole. A forwarded
+  newsletter with more is ambiguous and goes through normal scoring, so put
+  the link you want at the top.
+- **Where it's read:** the inbox (`IMAP_PICKS_FOLDER`, default `INBOX`) as
+  well as `IMAP_FOLDER`. The Sunday job ingests again right before
+  assembling, so a link forwarded Sunday afternoon still makes that night's
+  draft.
+- A pick already published in an earlier issue is skipped and logged.
+
 ## Changing the scoring
 
 Triage gives each link two scores: `fit` (is it on the beat: the creative

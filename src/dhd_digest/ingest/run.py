@@ -29,26 +29,46 @@ def _save_state(key: str, last_id: str):
             (key, str(last_id)))
 
 
-def collect() -> tuple[list[dict], str, str | int | None]:
+def _imap_folder(folder: str, key: str, picks_only: bool) -> tuple[list[dict], int | None]:
+    msgs = imap.fetch_messages(since_uid=int(_state(key) or 0), folder=folder)
+    links = []
+    for m in msgs:
+        pinned = imap.pick_links(m) if imap.is_pick(m) else []
+        if pinned:
+            links += pinned
+        elif not picks_only:
+            links += imap.extract_links(m)
+    return links, max((m["uid"] for m in msgs), default=None)
+
+
+def collect() -> tuple[list[dict], list[tuple[str, str | int]]]:
     """Return raw link dicts from whichever backend is configured, plus the
-    checkpoint to save once those links are durably written to candidates.
+    checkpoints to save once those links are durably written to candidates.
 
     Fetching never advances fetch_state itself - if the run dies before the
     candidates land, the next run must see the same messages again rather
     than silently skipping them.
+
+    On IMAP, links the editor forwards in come back pinned (see imap.is_pick).
+    Forwards usually land in the inbox rather than the newsletter folder, so
+    IMAP_PICKS_FOLDER (default INBOX) is read too, for picks only.
     """
     if os.environ.get("FEEDBIN_USER"):
         since = _state("feedbin")
         entries = feedbin.fetch_entries(since_id=since)
         links = [l for e in entries for l in feedbin.extract_links(e)]
-        checkpoint = entries[-1]["id"] if entries else None
-        return links, "feedbin", checkpoint
+        return links, ([("feedbin", entries[-1]["id"])] if entries else [])
 
-    since = int(_state("imap") or 0)
-    msgs = imap.fetch_messages(since_uid=since)
-    links = [l for m in msgs for l in imap.extract_links(m)]
-    checkpoint = max((m["uid"] for m in msgs), default=None)
-    return links, "imap", checkpoint
+    main = os.environ.get("IMAP_FOLDER") or "Newsletters"
+    picks = os.environ.get("IMAP_PICKS_FOLDER") or "INBOX"
+    links, checkpoints = [], []
+    for folder, key, picks_only in [(main, "imap", False)] + (
+            [(picks, f"imap:{picks}", True)] if picks != main else []):
+        found, uid = _imap_folder(folder, key, picks_only)
+        links += found
+        if uid is not None:
+            checkpoints.append((key, uid))
+    return links, checkpoints
 
 
 def published_date(tree: HTMLParser) -> date | None:
@@ -93,8 +113,9 @@ def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str, date | N
 
 
 def run():
-    raw, source_key, checkpoint = collect()
-    print(f"fetched {len(raw)} raw anchors from newsletters")
+    raw, checkpoints = collect()
+    picks = sum(1 for r in raw if r.get("pinned"))
+    print(f"fetched {len(raw)} raw anchors from newsletters, {picks} of them editor picks")
     raw += rss.fetch_links()
     print(f"{len(raw)} with trade RSS feeds")
 
@@ -103,33 +124,44 @@ def run():
     enriched: list[tuple[dict, str, str]] = []
     with httpx.Client(follow_redirects=True, timeout=8.0) as client:
         for item in raw:
+            pinned = bool(item.get("pinned"))
             url = unwrap(item["raw_url"], client) if RESOLVE_REDIRECTS else item["raw_url"]
-            if is_tracker_url(url):       # couldn't resolve it; never publish a tracker
+            # Never publish a tracker or a stale link - unless the editor
+            # forwarded it: their picks are always kept, and they'll see it.
+            if is_tracker_url(url) and not pinned:
                 continue
             cu = canonicalize(url)
-            if not cu or is_stale(url_date(cu)):
+            if not cu or (is_stale(url_date(cu)) and not pinned):
                 continue
             sources[cu].add(item.get("source_title") or item.get("source") or "unknown")
             if cu not in merged:
                 merged[cu] = {"canonical_url": cu, "raw_url": url,
                               "domain": domain_of(cu),
                               "anchor_text": item["anchor_text"],
-                              "context": item["context"]}
+                              "context": item["context"], "pinned": pinned}
+            elif pinned:
+                merged[cu]["pinned"] = True
         print(f"{len(merged)} distinct canonical urls")
 
-        # Drop anything already published, or already a candidate.
+        # Drop anything already published, or already a candidate. A pick that
+        # is already a candidate gets pinned in place (below) instead.
         keys = list(merged)
-        known = {r[0] for r in query(
+        already_published = {r[0] for r in query(
             "SELECT canonical_url FROM seen_urls WHERE canonical_url = ANY(%s)", (keys,))}
-        known |= {r[0] for r in query(
+        existing = {r[0] for r in query(
             "SELECT canonical_url FROM candidates WHERE canonical_url = ANY(%s)", (keys,))}
+        known = already_published | existing
         fresh = [v for k, v in merged.items() if k not in known]
         print(f"{len(fresh)} new after dedup ({len(known)} already seen)")
+        repin = [k for k, v in merged.items() if v["pinned"] and k in existing - already_published]
+        for k, v in merged.items():
+            if v["pinned"] and k in already_published:
+                print(f"  pick already published in an earlier issue, skipped: {k}")
 
         stale = 0
         for row in fresh:
             headline, excerpt, published = enrich(row["canonical_url"], client)
-            if is_stale(published):
+            if is_stale(published) and not row["pinned"]:
                 stale += 1
                 continue
             # Trade sites often block the page fetch; the feed's own title and
@@ -147,17 +179,23 @@ def run():
                 cur.execute(
                     """INSERT INTO candidates
                        (canonical_url, raw_url, domain, anchor_text, context,
-                        headline, excerpt, sources)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                        headline, excerpt, sources, pinned)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (canonical_url) DO UPDATE
                        SET sources = (
                            SELECT ARRAY(
                                SELECT DISTINCT unnest(
                                    candidates.sources || EXCLUDED.sources))
-                       )""",
+                       ),
+                       pinned = candidates.pinned OR EXCLUDED.pinned""",
                     (row["canonical_url"], row["raw_url"], row["domain"],
                      row["anchor_text"], row["context"], headline, excerpt,
-                     sorted(sources[row["canonical_url"]])))
-        if checkpoint is not None:
-            _save_state(source_key, checkpoint)
+                     sorted(sources[row["canonical_url"]]), row["pinned"]))
+            if repin:
+                cur.execute(
+                    "UPDATE candidates SET pinned = TRUE WHERE canonical_url = ANY(%s)",
+                    (repin,))
+        for key, value in checkpoints:
+            _save_state(key, value)
+        print(f"{len(repin) + sum(1 for r, *_ in enriched if r['pinned'])} editor picks pinned")
     print("ingest complete")

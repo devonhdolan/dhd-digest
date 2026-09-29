@@ -91,11 +91,28 @@ def select_pool(items: list[dict], caps: dict[str, int], limit: int,
     return cap_per_domain(items, caps, limit)
 
 
+def picks(section: str) -> list[dict]:
+    """Links the editor forwarded in, for this section. No bars, no age
+    window, no domain cap: they stay until published. A pick triage never
+    reached (or failed on) lands in Collaborative on its headline."""
+    rows = query(
+        """SELECT id, coalesce(blurb, headline, anchor_text, canonical_url), domain,
+                  coalesce(keep_score, 10), canonical_url, coalesce(fit_score, 10)
+           FROM candidates
+           WHERE pinned AND used_in_issue IS NULL
+             AND (section = %s OR (section IS NULL AND %s = 'Collaborative'))
+           ORDER BY first_seen_at""",
+        (section, section))
+    return [{**dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url", "fit"], r)),
+             "pinned": True} for r in rows]
+
+
 def pool(section: str, limit: int) -> list[dict]:
+    """The editor's picks, then the best of everything else."""
     rows = query(
         """SELECT id, blurb, domain, keep_score, canonical_url, fit_score
            FROM candidates
-           WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL
+           WHERE used_in_issue IS NULL AND triaged_at IS NOT NULL AND NOT pinned
              AND section = %s AND keep_score >= %s AND fit_score >= %s
              AND first_seen_at > now() - make_interval(days => %s)
            ORDER BY keep_score DESC, fit_score DESC LIMIT %s""",
@@ -103,7 +120,17 @@ def pool(section: str, limit: int) -> list[dict]:
         (section, MIN_KEEP_SCORE, MIN_FIT, CANDIDATE_MAX_AGE_DAYS, limit * 4))
     items = [dict(zip(["id", "blurb", "domain", "keep_score", "canonical_url", "fit"], r))
              for r in rows]
-    return select_pool(items, domain_caps(section), limit)
+    return picks(section) + select_pool(items, domain_caps(section), limit)
+
+
+def with_picks(chosen: list[dict], items: list[dict]) -> list[dict]:
+    """Every pick in the pool ends up in the section, whatever the editor
+    model returned: missing ones are added at the end on their triage blurb."""
+    have = {c["id"] for c in chosen}
+    missing = [it for it in items if it.get("pinned") and it["id"] not in have]
+    for it in missing:
+        print(f"    pick {it['id']} was left out by the editor - adding it back")
+    return chosen + missing
 
 
 def pool_size(target: int) -> int:
@@ -127,8 +154,8 @@ def edit_section(section: str, target: int) -> list[dict]:
     raw = next(b.input for b in resp.content if b.type == "tool_use")
     by_id = {i["id"]: i for i in items}
     chosen = validate_section_selection(raw, pool_ids=set(by_id), target=target)
-    return [{**by_id[entry.id], "blurb": entry.blurb, "section": section}
-            for entry in chosen]
+    out = [{**by_id[entry.id], "blurb": entry.blurb} for entry in chosen]
+    return [{**it, "section": section} for it in with_picks(out, items)]
 
 
 def tag_for(domain: str) -> str:

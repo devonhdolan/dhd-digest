@@ -16,10 +16,21 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      IMAP_HOST: ${{ secrets.IMAP_HOST }}
+      IMAP_USER: ${{ secrets.IMAP_USER }}
+      IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+      IMAP_FOLDER: ${{ secrets.IMAP_FOLDER }}
+      IMAP_PICKS_FOLDER: ${{ secrets.IMAP_PICKS_FOLDER }}
+      OWNER_EMAILS: ${{ secrets.OWNER_EMAILS }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
+      - run: uv run dhd init-db
+      # Catch anything since the morning run - above all, links forwarded in
+      # on Sunday, which must make tonight's draft.
+      - run: uv run dhd ingest
+      - run: uv run dhd triage 800
       - run: uv run dhd assemble
       - uses: peter-evans/create-pull-request@v7
         with:

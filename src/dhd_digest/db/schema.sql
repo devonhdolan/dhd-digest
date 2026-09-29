@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS candidates (
 );
 -- Added after launch: subject fit (1-10), gated separately from keep_score.
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS fit_score REAL;
+-- Links the editor forwarded in: always included in the next draft.
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS cand_untriaged_idx ON candidates (triaged_at)
     WHERE triaged_at IS NULL;
 CREATE INDEX IF NOT EXISTS cand_open_idx ON candidates (keep_score DESC)

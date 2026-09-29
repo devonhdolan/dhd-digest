@@ -20,6 +20,7 @@ Rules:
 - Never write parenthetical asides. The editor adds those by hand.
 - Never add a source tag like [TC] or [SVC]. The renderer adds the link.
 - Do not invent facts. If a blurb overclaims relative to its headline, tighten it.
+- Items marked PICK were chosen by the editor. Always include every one, whatever you think of it; you may only edit its blurb and choose its position. They count toward the maximum.
 - The count is a ceiling, not a target. Return up to that many items; a thin week gets a short section. Never include an item just to reach the count."""
 
 
@@ -31,7 +32,8 @@ def build_user_message(section, items, examples, target_count):
         lines.append(f"  {e['blurb']}")
     lines += ["", "CANDIDATES (id | score | blurb | domain):"]
     for it in items:
-        lines.append(f"  {it['id']} | {it['keep_score']:.1f} | {it['blurb']} | {it['domain']}")
+        score = "PICK" if it.get("pinned") else f"{it['keep_score']:.1f}"
+        lines.append(f"  {it['id']} | {score} | {it['blurb']} | {it['domain']}")
     lines += ["", "Call build_section once."]
     return "\n".join(lines)
 

@@ -1,7 +1,5 @@
 name,url
-Deadline,https://deadline.com/feed/
-Variety,https://variety.com/feed/
-THR,https://www.hollywoodreporter.com/feed/
-IndieWire,https://www.indiewire.com/feed/
-TheWrap,https://www.thewrap.com/feed/
+Deadline Film,https://deadline.com/v/film/feed/
+Variety Film,https://variety.com/v/film/feed/
+THR Movies,https://www.hollywoodreporter.com/c/movies/feed/
 TechCrunch Media & Entertainment,https://techcrunch.com/category/media-entertainment/feed/

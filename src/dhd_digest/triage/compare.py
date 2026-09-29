@@ -28,7 +28,7 @@ from .score import CANDIDATE_COLUMNS, score_candidates
 OLD_MIN_KEEP_SCORE = 6
 RESCORE_FLOOR = 5
 LIST_LIMIT = 40
-FEED_ITEMS_PER_FEED = 50
+FEED_ITEMS_PER_FEED = 20
 
 
 def load(days: int, include_ids: list[int]) -> list[dict]:

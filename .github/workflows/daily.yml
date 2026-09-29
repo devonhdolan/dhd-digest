@@ -16,6 +16,8 @@ jobs:
       IMAP_USER: ${{ secrets.IMAP_USER }}
       IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
       IMAP_FOLDER: ${{ secrets.IMAP_FOLDER }}
+      IMAP_PICKS_FOLDER: ${{ secrets.IMAP_PICKS_FOLDER }}   # blank = INBOX
+      OWNER_EMAILS: ${{ secrets.OWNER_EMAILS }}             # your addresses, comma-separated
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

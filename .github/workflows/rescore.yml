@@ -1,7 +1,8 @@
 name: rescore
 # "compare" re-scores this week's candidates with the triage prompt and
 # scoring in this checkout and reports before/after, writing nothing. It runs
-# by hand, and on any PR that touches scoring so the PR shows its effect.
+# by hand, and on PRs that touch scoring once they carry the `rescore` label -
+# each run is several hundred model calls, so it's opt-in.
 # "apply" (by hand only) re-triages them for real, so the next draft uses the
 # new scoring.
 on:
@@ -18,6 +19,7 @@ on:
         description: "compare: path of that draft"
         default: "drafts/issue-251.md"
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - src/dhd_digest/triage/**
       - src/dhd_digest/corpus/embed.py
@@ -33,6 +35,7 @@ concurrency:
 
 jobs:
   rescore:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'rescore')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
