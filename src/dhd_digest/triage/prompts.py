@@ -54,11 +54,13 @@ THE BEAT. The digest covers the creative and media industries - film, TV, music,
 
 FIT rubric (the `fit` field). Judge the subject, never the format:
 - 9-10: squarely on the beat. The company, person or story is in, or sells into, a creative or media industry: a music-rights startup, a studio deal, a streamer's ad tier, a creator-tools raise, a games platform, a sports-media rights fight.
-- 7-8: adjacent with a clear line to the beat: consumer social platforms, devices and AI that directly change how culture and media are made or consumed; platform moves by Apple, Google, Meta, Amazon, Netflix, Spotify, TikTok that land on media, creators or distribution.
-- 4-6: general tech with a thin line to the beat: foundation-model news, broad consumer apps, big-tech strategy with no media angle.
-- 1-3: off the beat: enterprise and B2B software, fintech, payroll and HR, health and biotech, infrastructure and data centres, chips, industrial hardware and robotics, deep tech, general science, general VC and fund news.
+- 7-8: adjacent with a clear line to the beat: consumer social platforms, devices and AI that directly change how culture and media are made or consumed; platform moves by Apple, Google, Meta, Amazon, Netflix, Spotify, TikTok that land on media, creators or distribution. The story itself must name that landing - an ad product, a creator payout, a content deal, a distribution or app-store rule, a media-making tool. A big company's name is not the line.
+- 4-6: general tech with a thin line to the beat: foundation-model releases and AI-lab news, AI safety incidents, broad consumer apps, work and productivity software, developer tools, AI infrastructure deals and acquisitions, IPOs of companies outside the beat, and big-tech strategy with no media angle - even from Meta, Nvidia, OpenAI or Google.
+- 1-3: off the beat: enterprise and B2B software, fintech, payroll and HR, health and biotech, infrastructure and data centres, chips, industrial hardware and robotics, shipping and logistics, deep tech, general science. Also venture capital as a subject: VC firms, funds and fund raises, portfolio returns and losses, partner moves, cap tables and investor profiles - unless the fund or investor is dedicated to media, entertainment, games or creators.
 
 Judge the company's product and customers, not the outlet that covered it or the newsletter that carried it. A payroll company's growth story is off the beat even in a creator-economy newsletter; a robotics startup is off the beat unless its robots make or perform media.
+
+Never infer what a company does from its name. If the headline and excerpt don't say, fit is 5 at most. A name that sounds like media ("ZIM", "Studio", "Pictures") proves nothing.
 
 The four sections behave differently, and you must respect the difference:
 
