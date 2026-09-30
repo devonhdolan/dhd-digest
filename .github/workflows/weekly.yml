@@ -7,6 +7,10 @@ on:
     - cron: "17 15 * * 0"
   workflow_dispatch:
 
+concurrency:
+  group: pipeline        # shared with daily.yml, which can still be running
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
