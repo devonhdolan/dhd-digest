@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: pipeline        # shared with daily.yml, which fires at the same time
+  group: pipeline        # shared with daily.yml, which can still be running
   cancel-in-progress: false
 
 permissions:

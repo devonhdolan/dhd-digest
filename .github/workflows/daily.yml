@@ -1,10 +1,12 @@
 name: daily-ingest
 on:
   schedule:
-    # 08:17 Pacific daylight time (07:17 in winter, PST), after the morning
-    # newsletters land. Same slot as weekly.yml; the shared concurrency group
-    # below makes the two queue on Sundays instead of racing on the database.
-    - cron: "17 15 * * *"
+    # 06:17 Pacific daylight time (05:17 in winter, PST). GitHub starts
+    # scheduled jobs hours late, so in practice this lands mid-morning, after
+    # the newsletters. Off the hour to dodge the top-of-hour queue. On Sundays
+    # a late start can overlap weekly.yml; the shared concurrency group below
+    # makes the two queue instead of racing on the database.
+    - cron: "17 13 * * *"
   workflow_dispatch:
 
 concurrency:
