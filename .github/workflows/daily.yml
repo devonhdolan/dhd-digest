@@ -1,8 +1,15 @@
 name: daily-ingest
 on:
   schedule:
-    - cron: "0 13 * * *"     # 06:00 America/Los_Angeles
+    # 08:17 Pacific daylight time (07:17 in winter, PST), after the morning
+    # newsletters land. Same slot as weekly.yml; the shared concurrency group
+    # below makes the two queue on Sundays instead of racing on the database.
+    - cron: "17 15 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
 
 permissions:
   contents: read

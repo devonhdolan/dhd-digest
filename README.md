@@ -86,9 +86,10 @@ uv run dhd assemble    # writes drafts/issue-251.md
 ```
 
 **5. Schedule.** Add `DATABASE_URL`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, and
-your ingestion credentials as repo secrets. The two workflows then run daily at
-6am and Sunday at 8am Pacific (both UTC crons, and GitHub often starts them a few
-hours late). The weekly job opens a PR rather than publishing.
+your ingestion credentials as repo secrets. Both workflows run at 8:17am Pacific
+(7:17 in winter; the crons are UTC), the daily one every day and the weekly one
+on Sundays. GitHub often starts them a few hours late. On Sundays they queue
+behind each other rather than running at once. The weekly job opens a PR rather than publishing.
 
 ## Daily review (teaching the curation)
 
