@@ -35,6 +35,8 @@ SHAPES = [
         u)),
     ("jobs/careers", lambda u, p: re.search(r"(/jobs?\b|/careers?\b|greenhouse\.io|lever\.co)", u)),
 ]
+PAPERS = ["wsj.com", "nytimes.com", "bloomberg.com", "reuters.com", "cnbc.com",
+          "ft.com", "washingtonpost.com", "latimes.com", "theinformation.com"]
 SHORT_ANCHOR = re.compile(r"^\W*(\w+\W*){0,2}$")   # "Read more", "here", "Listen"
 
 
@@ -115,6 +117,20 @@ def run(days: int = 7, out_path: str = "junk-report.md") -> str:
     for s, rs in sorted(by_src.items(), key=lambda x: -len(x[1]))[:30]:
         good = sum(cleared(r[4], r[5]) for r in rs)
         md.append(f"| {s} | {len(rs)} | {good} | {100 * good / len(rs):.0f}% |")
+
+    # What triage saw for the big paywalled papers
+    papers = query(
+        """SELECT domain, headline, anchor_text, left(context, 140), left(excerpt, 140),
+                  fit_score, left(reasoning, 160)
+           FROM candidates
+           WHERE triaged_at IS NOT NULL AND fit_score IS NOT NULL
+             AND domain = ANY(%s)
+             AND first_seen_at > now() - make_interval(days => %s)
+           ORDER BY first_seen_at DESC LIMIT 25""", (PAPERS, days))
+    md += ["", "## What triage saw for the big papers", ""]
+    for d, h, a, c, e, f, why in papers:
+        md += [f"- **{d}** · fit {f}", f"  - headline: {h!r}", f"  - anchor: {a!r}",
+               f"  - context: {c!r}", f"  - excerpt: {e!r}", f"  - why: {why}"]
 
     # Bottom line
     droppable = shape_hits | {r[0] for _, rs in never for r in rs}
