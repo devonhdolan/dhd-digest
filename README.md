@@ -86,10 +86,12 @@ uv run dhd assemble    # writes drafts/issue-251.md
 ```
 
 **5. Schedule.** Add `DATABASE_URL`, `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, and
-your ingestion credentials as repo secrets. The daily workflow runs at 6:17am
-Pacific and the weekly one on Sundays at 8:17am (an hour earlier in winter; the
-crons are UTC). GitHub often starts them a few hours late. If the two overlap on
-a Sunday, one waits for the other. The weekly job opens a PR rather than publishing.
+your ingestion credentials as repo secrets. Two Claude Routines start the
+workflows through `workflow_dispatch`: daily at 6:17am Pacific and Sundays at
+8:17am (Pacific time year-round). The workflows have no GitHub `schedule:`
+because GitHub's cron ran hours late and sometimes not at all. To run either by
+hand, use Actions → the workflow → Run workflow. If the two overlap on a Sunday,
+one waits for the other. The weekly job opens a PR rather than publishing.
 
 ## Daily review (teaching the curation)
 

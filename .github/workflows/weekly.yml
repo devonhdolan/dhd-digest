@@ -1,10 +1,8 @@
 name: weekly-draft
 on:
-  schedule:
-    # Sunday 08:17 Pacific daylight time (07:17 in winter, PST). GitHub cron is
-    # UTC-only and starts scheduled jobs late under load (3-5h has been
-    # typical); off-the-hour minutes dodge the worst of the top-of-hour queue.
-    - cron: "17 15 * * 0"
+  # Started Sundays at 08:17 Pacific by a Claude Routine ("DHD Sunday weekly
+  # draft") through workflow_dispatch, instead of GitHub's cron, which ran
+  # hours late or not at all.
   workflow_dispatch:
 
 concurrency:
