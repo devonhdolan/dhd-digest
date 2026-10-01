@@ -17,8 +17,9 @@ permissions:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90   # ingest ~15 min; triage of a big backlog runs long at the Voyage free tier
     env:
+      PYTHONUNBUFFERED: "1"   # progress lines show live in the log
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
