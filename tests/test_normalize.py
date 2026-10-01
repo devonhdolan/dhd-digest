@@ -69,6 +69,16 @@ def test_strips_morning_brew_subscriber_ids():
     assert canonicalize(u) == "https://morningbrew.com/stories/x"
 
 
+def test_strips_beehiiv_and_share_ids():
+    v = "https://variety.com/2026/film/news/paramount-merger-1236893467"
+    assert canonicalize(v + "?_bhlid=9aa60f289b") == canonicalize(v)
+    assert canonicalize(v + "?stream=top") == canonicalize(v)
+    fp = "https://futureparty.com/p/neon-scp?_bhlid=a610&jwt_token=eyJ0eXAi.eyJzdWIi.z2cD"
+    assert canonicalize(fp) == "https://futureparty.com/p/neon-scp"
+    sp = "https://open.spotify.com/show/4uXiz?dlsi=09f4&nd=1&si=cc85"
+    assert canonicalize(sp) == "https://open.spotify.com/show/4uXiz?nd=1"
+
+
 def test_rejects_personal_account_links():
     for u in [
         "https://rickrubin.substack.com/action/disable_email?token=eyJ1c2VyX2lk",
