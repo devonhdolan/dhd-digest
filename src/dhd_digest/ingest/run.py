@@ -6,11 +6,12 @@ from datetime import date, datetime
 import httpx
 from selectolax.parser import HTMLParser
 
-from ..config import MAX_ARTICLE_AGE_DAYS
-from ..db.client import conn, query
+from ..config import CANDIDATE_MAX_AGE_DAYS, MAX_ARTICLE_AGE_DAYS
+from ..db.client import conn, execute, query
 from . import feedbin, imap, rss
-from .normalize import (canonicalize, domain_of, is_stale, is_tracker_url,
-                        unwrap, url_date)
+from .normalize import (JUNK_ANCHORS, blocked_page, canonicalize, domain_of,
+                        fallback_headline, is_stale, is_tracker_url, unwrap,
+                        url_date)
 
 RESOLVE_REDIRECTS = os.environ.get("RESOLVE_REDIRECTS", "true").lower() == "true"
 
@@ -89,6 +90,8 @@ def enrich(canonical_url: str, client: httpx.Client) -> tuple[str, str, date | N
     triage handles blanks, and an unknown date counts as fresh."""
     try:
         r = client.get(canonical_url, timeout=8.0)
+        if r.status_code >= 400:
+            return "", "", None
         tree = HTMLParser(r.text)
         title = ""
         for sel, attr in [('meta[property="og:title"]', "content"),
@@ -130,6 +133,8 @@ def run():
             # forwarded it: their picks are always kept, and they'll see it.
             if is_tracker_url(url) and not pinned:
                 continue
+            if JUNK_ANCHORS.search(item.get("anchor_text") or "") and not pinned:
+                continue
             cu = canonicalize(url)
             if not cu or (is_stale(url_date(cu)) and not pinned):
                 continue
@@ -164,10 +169,14 @@ def run():
             if is_stale(published) and not row["pinned"]:
                 stale += 1
                 continue
-            # Trade sites often block the page fetch; the feed's own title and
-            # summary are a good stand-in.
-            enriched.append((row, headline or row["anchor_text"],
-                             excerpt or row["context"]))
+            # Paywalled and trade sites often block the page fetch, serving
+            # "Access Denied" or a captcha. Then the newsletter's own words
+            # (or the feed's title and summary) are the best stand-in.
+            if not headline or blocked_page(headline, excerpt, row["domain"]):
+                headline = fallback_headline(row["anchor_text"], row["context"],
+                                             row["canonical_url"])
+                excerpt = row["context"]
+            enriched.append((row, headline, excerpt or row["context"]))
         print(f"{stale} dropped as older than {MAX_ARTICLE_AGE_DAYS} days")
 
     # Fetching every new page above can take minutes, long enough for the
@@ -203,4 +212,29 @@ def run():
         for key, value in checkpoints:
             _save_state(key, value)
         print(f"{len(repin) + sum(1 for r, *_ in enriched if r['pinned'])} editor picks pinned")
+    retitle()
     print("ingest complete")
+
+
+def retitle() -> int:
+    """Repair open candidates stored with a block page's title ("Access
+    Denied", "404", a captcha) and queue them for re-triage, which scored
+    them on the block page. Idempotent: a repaired row no longer matches."""
+    rows = query(
+        """SELECT id, canonical_url, domain, anchor_text, context, headline, excerpt
+           FROM candidates
+           WHERE used_in_issue IS NULL AND NOT pinned
+             AND first_seen_at > now() - make_interval(days => %s)""",
+        (CANDIDATE_MAX_AGE_DAYS,))
+    fixed = 0
+    for id_, url, domain, anchor, context, headline, excerpt in rows:
+        if not blocked_page(headline or "", excerpt or "", domain or ""):
+            continue
+        execute("""UPDATE candidates SET headline = %s, excerpt = %s, triaged_at = NULL,
+                          fit_score = NULL, keep_score = NULL
+                   WHERE id = %s""",
+                (fallback_headline(anchor, context, url), context, id_))
+        fixed += 1
+    if fixed:
+        print(f"{fixed} candidates stored with a block page's title repaired and queued for re-triage")
+    return fixed
