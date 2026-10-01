@@ -21,6 +21,10 @@ STRIP_PARAMS = {
     "ck_subscriber_id", "email_token", "publication_id", "post_id", "triedRedirect",
     # Morning Brew per-subscriber ids; Puck's per-subscriber referral hash.
     "mbcid", "mblid", "mbuuid", "mid", "pr",
+    # beehiiv's click id and per-subscriber login token (Future Party etc.).
+    "_bhlid", "jwt_token",
+    # Ghost attribution, Spotify share ids, Variety's feed marker.
+    "attribution_id", "attribution_type", "si", "dlsi", "stream",
 }
 # Params some sites genuinely need. Never strip these.
 KEEP_PARAMS = {"v", "id", "p", "story", "articleId", "gid", "t"}
