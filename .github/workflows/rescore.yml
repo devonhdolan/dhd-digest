@@ -5,12 +5,14 @@ name: rescore
 # each run is several hundred model calls, so it's opt-in.
 # "apply" (by hand only) re-triages them for real, so the next draft uses the
 # new scoring.
+# "junk-report" (by hand) is free: database queries only. It shows which
+# links triage paid for that a free filter could have dropped.
 on:
   workflow_dispatch:
     inputs:
       mode:
         type: choice
-        options: [compare, apply]
+        options: [compare, apply, junk-report]
         default: compare
       draft_ref:
         description: "compare: branch holding a draft to check (blank for none)"
@@ -76,6 +78,14 @@ jobs:
         with:
           name: compare-report
           path: compare-report.md
+      - name: Junk report
+        if: env.MODE == 'junk-report'
+        run: uv run dhd junk-report 7
+      - uses: actions/upload-artifact@v4
+        if: env.MODE == 'junk-report'
+        with:
+          name: junk-report
+          path: junk-report.md
       - name: Apply
         if: env.MODE == 'apply'
         run: |
