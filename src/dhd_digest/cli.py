@@ -7,6 +7,7 @@
   triage        daily: score untriaged candidates against the archive
   compare [F] [--feeds]  read-only before/after report for a scoring change;
                 F = a draft to check, --feeds = also score the trade feeds' current items
+  junk-report [D]  read-only: which links triage paid for that a free filter could drop
   retriage      queue this week's open candidates scored the old way for re-triage
   review-open   daily: open today's review issue (tick what doesn't belong)
   review-record N   record the verdicts on closed review issue N
@@ -41,6 +42,9 @@ def main():
         args = sys.argv[2:]
         draft = next((a for a in args if not a.startswith("--")), None)
         run(draft or None, feeds="--feeds" in args)
+    elif cmd == "junk-report":
+        from .triage.junk import run
+        run(int(sys.argv[2]) if len(sys.argv) > 2 else 7)
     elif cmd == "retriage":
         from .config import CANDIDATE_MAX_AGE_DAYS
         from .db.client import execute
