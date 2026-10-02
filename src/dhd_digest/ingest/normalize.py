@@ -40,7 +40,24 @@ JUNK_PATTERNS = re.compile(
     # act on the subscriber's account when clicked.
     r"disable_email|/member/account|/account(/|\?|$)|/leaderboard\b|"
     r"[?&](token|email|referrer_token)=|"
-    r"^https?://[\w-]+\.substack\.com/?$)", re.I)
+    r"^https?://[\w-]+\.substack\.com/?$|"
+    # "Follow us" footers: a bare social profile, not a post.
+    r"^https?://(www\.)?(facebook|instagram|linkedin|tiktok|threads)\.(com|net)/"
+    r"(company/|in/|@)?[\w.-]+/?(\?.*)?$|"
+    r"^https?://(www\.)?(x|twitter)\.com/\w+/?(\?.*)?$)", re.I)
+
+# Sponsors and boilerplate that newsletters carry every issue. None has ever
+# cleared triage or appeared in the archive (dhd junk-report, Oct 2026).
+BLOCKED_DOMAINS = {
+    "jpmorgan.com", "ssga.com", "laundrysauce.com", "dickssportinggoods.com",
+    "modash.io", "app.dealroom.co", "citybiz.co", "podcast.futureparty.com",
+    "newsletter.strictlyvc.com",
+}
+# Anchor text that marks a newsletter's own furniture rather than a story.
+JUNK_ANCHORS = re.compile(
+    r"^\W*(read|view)( it)? (online|in (your )?browser)|^\W*(sign ?up|subscribe|advertise|"
+    r"sponsor(ed)?( by)?|forward (this|to a friend)|refer a friend|update your preferences)\b",
+    re.I)
 
 # Newsletter link wrappers that hide the real destination. Exact hosts for
 # one-off ESPs, plus patterns for ESPs that send from a per-customer or
@@ -59,6 +76,8 @@ REDIRECT_HOST_PATTERNS = (
     # SendGrid/beehiiv branded click domains: elink22c.strictlyvc.com,
     # elinkce0.mail.futureparty.com.
     re.compile(r"^elink[\w-]*\.([\w-]+\.)+[a-z]+$"),
+    # Amazon SES click tracking: ztc5fk76.r.us-east-1.awstrack.me
+    re.compile(r"^[\w-]+\.r\.[\w-]+\.awstrack\.me$"),
 )
 # Trackers that live on the publisher's own domain, recognisable by path.
 # Matched against path plus query.
@@ -133,7 +152,7 @@ def canonicalize(url: str) -> str | None:
     host = p.netloc.lower().split(":")[0]
     if host.startswith("www."):
         host = host[4:]
-    if not host or "." not in host:
+    if not host or "." not in host or host in BLOCKED_DOMAINS:
         return None
 
     kept = []
@@ -178,6 +197,41 @@ def bad_link(url: str) -> bool:
     stale dates. Stored candidates can predate those checks."""
     return (is_tracker_url(url) or canonicalize(url) is None
             or is_stale(url_date(url)))
+
+
+# What a paywalled or bot-blocked site serves instead of the article.
+BLOCKED_PAGE = re.compile(
+    r"are you a robot|access denied|enable js|enable javascript|disable any ad ?blocker|"
+    r"just a moment|attention required|verify you are human|captcha|^\s*40[34]\b|"
+    r"page not found|^reference #|^popular articles$|subscribe to (continue|read)", re.I)
+
+
+def blocked_page(title: str, excerpt: str, domain: str) -> bool:
+    """True when the page fetch got a block, error or bare-site-name page,
+    so its title and description say nothing about the story."""
+    t = (title or "").strip()
+    bare = domain.removeprefix("www.").split(".")[0]
+    return (bool(BLOCKED_PAGE.search(t) or BLOCKED_PAGE.search((excerpt or "").strip()))
+            or t.lower() in {domain.lower(), f"www.{domain.lower()}"}
+            or t.lower().replace(" ", "") in {bare, f"the{bare}"})
+
+
+def fallback_headline(anchor: str, context: str, url: str) -> str:
+    """The best stand-in headline from what the newsletter itself said:
+    a descriptive anchor, else the opening of the paragraph around it, else
+    the words of the URL slug."""
+    anchor = (anchor or "").strip()
+    if len(anchor.split()) >= 4 and not anchor.startswith(("http", "axios.link")):
+        return anchor[:200]
+    context = re.sub(r"^[^\w“\"']+", "", (context or "").strip())
+    if len(context.split()) >= 4:
+        first = re.split(r"(?<=[.!?])\s", context, maxsplit=1)[0]
+        return first[:200]
+    slug = [seg for seg in urlparse(url).path.split("/") if re.search(r"[a-z]-[a-z]", seg)]
+    if slug:
+        words = re.sub(r"\.html?$|-[0-9a-f]{6,}$|-\d+$", "", slug[-1]).replace("-", " ")
+        return words[:200]
+    return anchor
 
 
 def domain_of(canonical_url: str) -> str:
