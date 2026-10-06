@@ -103,3 +103,39 @@ def test_url_date_and_staleness():
     assert not is_stale(url_date("https://techcrunch.com/2026/09/25/x"), today)
     assert url_date("https://newcomer.co/p/kleiner-perkins") is None
     assert not is_stale(None, today)
+
+
+def test_drops_social_footers_and_sponsors_but_keeps_posts():
+    from dhd_digest.ingest.normalize import JUNK_ANCHORS, is_tracker_url
+    for u in ["https://www.facebook.com/axios", "https://linkedin.com/company/morning-brew",
+              "https://instagram.com/futureparty/", "https://x.com/axios",
+              "https://www.jpmorgan.com/insights/x", "https://newsletter.strictlyvc.com/p/x"]:
+        assert canonicalize(u) is None, u
+    for u in ["https://x.com/dps/status/2103161493722419334",
+              "https://threads.com/@benedictevans/post/Dd4j-8Hm8-g",
+              "https://linkedin.com/posts/someone_activity-123"]:
+        assert canonicalize(u), u
+    assert is_tracker_url("https://ztc5fk76.r.us-east-1.awstrack.me/L0/https:%2F%2Fx.com")
+    for a in ["Read online", "View in browser", "Sponsored by Acme", "Subscribe"]:
+        assert JUNK_ANCHORS.search(a), a
+    for a in ["Subscriber growth slows at Netflix", "Advertisers flee X", "Sponsorship deal"]:
+        assert not JUNK_ANCHORS.search(a), a
+
+
+def test_blocked_pages_fall_back_to_the_newsletters_words():
+    from dhd_digest.ingest.normalize import blocked_page, fallback_headline
+    assert blocked_page("Bloomberg - Are you a robot?", "", "bloomberg.com")
+    assert blocked_page("Access Denied", "Reference #18.1071", "cnbc.com")
+    assert blocked_page("nytimes.com", "Please enable JS and disable any ad blocker", "nytimes.com")
+    assert blocked_page("404", "POPULAR ARTICLES", "wsj.com")
+    assert not blocked_page("Paramount sells $44bn of bonds", "The company...", "bloomberg.com")
+    ctx = ("Paramount Skydance began holding investor calls to shore up around $44 billion "
+           "in bond sales. More to come.")
+    assert fallback_headline("Bloomberg", ctx, "https://bloomberg.com/news/articles/x") == (
+        "Paramount Skydance began holding investor calls to shore up around $44 billion "
+        "in bond sales.")
+    assert fallback_headline("🍎 Apple CEO John Ternus plans changes", "", "https://x.co/a") == (
+        "🍎 Apple CEO John Ternus plans changes")
+    assert fallback_headline("more here", "more here",
+                             "https://wsj.com/business/media/paramount-warner-bonds-1a2b3c4d") == (
+        "paramount warner bonds")

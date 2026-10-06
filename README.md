@@ -169,6 +169,17 @@ anything they ran that never made the digest is a labelled reject. Then score
 the triage prompt and track precision@150. Without this you're guessing about
 whether the kNN prior is doing work or Claude is just being agreeable.
 
+## Before triage (free filters)
+
+Ingest drops, before any model call: tracker and personal links, social
+"follow us" footers (bare profiles, not posts), a short list of recurring
+sponsors (`normalize.BLOCKED_DOMAINS`) and newsletter furniture anchors
+("Read online", "Sponsored by"). Paywalled papers (WSJ, NYT, Bloomberg,
+Reuters, CNBC) block the page fetch, so when a fetch comes back as a captcha
+or "Access Denied" the newsletter's own sentence about the story is used as
+the headline instead. `uv run dhd junk-report` (or rescore → junk-report)
+shows, free, what triage paid for that a filter could have dropped.
+
 ## Tuning
 
 - `config.MIN_KEEP_SCORE` — how selective triage is. Start at 6.
