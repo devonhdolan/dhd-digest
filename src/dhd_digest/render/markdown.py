@@ -47,6 +47,9 @@ def render(draft: dict) -> str:
     return "\n".join(lines)
 
 
+SECTION_HEADING = re.compile(r"^\*\*(Tech|Media|Entertainment|Collaborative)\*\*\s*$")
+
+
 def parse_published(path: Path | str) -> list[dict]:
     """Read a (possibly hand-edited) rendered draft back into the items
     that survived review. A line only counts if its id marker is still
@@ -55,14 +58,20 @@ def parse_published(path: Path | str) -> list[dict]:
     (useful later if published issues ever feed back into the archive).
     """
     text = Path(path).read_text()
-    out = []
+    out, section = [], None
     for line in text.splitlines():
+        heading = SECTION_HEADING.match(line)
+        if heading:
+            section = heading.group(1)
+            continue
         m = ITEM_LINE.match(line)
         if m:
             out.append({
                 "id": int(m.group("id")),
                 "blurb": m.group("blurb"),
                 "canonical_url": m.group("url"),
+                "tag": m.group("tag"),
+                "section": section,
             })
     return out
 

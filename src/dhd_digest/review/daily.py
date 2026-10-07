@@ -101,6 +101,24 @@ def list_items(review: str, pool_ids: list[int], near_ids: list[int] = ()):
             [(i, review, False) for i in pool_ids] + [(i, review, True) for i in near_ids])
 
 
+def relist(review: str, ids: list[int]):
+    """List a rebuilt draft's items under `review`, replacing any earlier
+    draft's unreviewed listing for the same issue. Without this, items from
+    a superseded draft stay listed and get recorded as cuts at publish."""
+    with conn().cursor() as cur:
+        cur.execute("DELETE FROM review_items WHERE review = %s AND verdict IS NULL", (review,))
+    list_items(review, ids)
+
+
+def prune(review: str, keep_ids: list[int]) -> int:
+    """Drop `review` rows for items not in `keep_ids`, verdict or not.
+    Repairs a listing that a superseded draft polluted."""
+    with conn().cursor() as cur:
+        cur.execute("DELETE FROM review_items WHERE review = %s AND NOT candidate_id = ANY(%s)",
+                    (review, keep_ids))
+        return cur.rowcount
+
+
 def record(review: str, verdicts: dict[int, str]) -> dict[str, int]:
     """Store verdicts for items listed under `review`. A rescue also pins
     the candidate so it goes in the next draft."""

@@ -217,5 +217,18 @@ def publish(issue: int, drafts_dir: str = "drafts") -> int:
                SELECT canonical_url, %s, %s FROM candidates WHERE id = ANY(%s)
                ON CONFLICT DO NOTHING""",
             (date.today(), issue, ids))
-    print(f"published issue {issue}: {len(ids)} links marked used")
+        # The issue joins the archive, so triage compares future links with
+        # what was actually sent - blurbs as edited, sections as placed.
+        # Re-running publish replaces the issue's archive rows.
+        cur.execute("DELETE FROM historical_links WHERE issue = %s", (issue,))
+        cur.executemany(
+            """INSERT INTO historical_links
+                   (issue, published_on, section, tag, url, canonical_url, domain,
+                    blurb, blurb_words, embedding)
+               SELECT %s, %s, coalesce(%s, c.section), %s, c.raw_url, c.canonical_url,
+                      c.domain, %s, %s, c.embedding
+               FROM candidates c WHERE c.id = %s""",
+            [(issue, date.today(), it.get("section"), it.get("tag"), it["blurb"],
+              len(it["blurb"].split()), it["id"]) for it in items])
+    print(f"published issue {issue}: {len(ids)} links marked used and added to the archive")
     return len(ids)

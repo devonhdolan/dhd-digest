@@ -53,3 +53,15 @@ def test_feedback_reaches_the_triage_prompt():
     # and nothing extra when there is no feedback yet
     assert "EDITOR'S OWN" not in build_user_message(
         {"headline": "h", "domain": "d", "excerpt": "", "sources": []}, {}, "Tech")
+
+
+def test_parse_published_keeps_section_and_tag(tmp_path):
+    from dhd_digest.render.markdown import parse_published
+    f = tmp_path / "issue-251.md"
+    f.write_text("### Issue 251\n\n**Tech**\n\n"
+                 "Topdog raised $2.5m. [TC](https://techcrunch.com/a) <!-- id:1 -->\n\n"
+                 "**Media**\n\n"
+                 "Paramount sells bonds. [WSJ](https://wsj.com/b) <!-- id:2 -->\n\n"
+                 "Cut line without marker. [X](https://x.com/c)\n")
+    items = parse_published(f)
+    assert [(i["id"], i["section"], i["tag"]) for i in items] == [(1, "Tech", "TC"), (2, "Media", "WSJ")]

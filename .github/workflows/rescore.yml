@@ -5,6 +5,10 @@ name: rescore
 # each run is several hundred model calls, so it's opt-in.
 # "apply" (by hand only) re-triages them for real, so the next draft uses the
 # new scoring.
+# "republish" (by hand) repairs a published issue whose draft was rebuilt
+# before the relisting fix: draft_ref = the commit of the draft as built
+# (before your edits), draft_file = its path. It drops listed items that
+# weren't in that draft, then re-runs publish from main's copy.
 # "junk-report" (by hand) is free: database queries only. It shows which
 # links triage paid for that a free filter could have dropped.
 on:
@@ -12,7 +16,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [compare, apply, junk-report]
+        options: [compare, apply, junk-report, republish]
         default: compare
       draft_ref:
         description: "compare: branch holding a draft to check (blank for none)"
@@ -78,6 +82,15 @@ jobs:
         with:
           name: compare-report
           path: compare-report.md
+      - name: Republish
+        if: env.MODE == 'republish'
+        run: |
+          git fetch --depth=1 origin "$DRAFT_REF"
+          mkdir -p /tmp/orig && git show "FETCH_HEAD:$DRAFT_FILE" > "/tmp/orig/$(basename "$DRAFT_FILE")"
+          uv run dhd init-db
+          uv run dhd review-prune "/tmp/orig/$(basename "$DRAFT_FILE")"
+          n=$(basename "$DRAFT_FILE" | sed -nE 's/issue-([0-9]+)\.md/\1/p')
+          uv run dhd publish "$n"
       - name: Junk report
         if: env.MODE == 'junk-report'
         run: uv run dhd junk-report 7

@@ -158,7 +158,9 @@ Review the PR. Three jobs, ~15 minutes:
 **Merge the PR only after the issue has gone out.** Merging runs the
 **publish** workflow (`dhd publish N`), which marks the links as used, adds
 them to `seen_urls` and records what you kept and cut; it comments the tally
-on the PR. It reads `drafts/issue-N.md` as merged, so whatever you cut or
+on the PR. The issue's surviving links, with your edited blurbs, also join
+the archive, so triage measures new links against what you actually sent as
+well as the 250 historical issues. It reads `drafts/issue-N.md` as merged, so whatever you cut or
 edited is exactly what gets published; it never re-runs the editor model.
 If a draft won't go out, close the PR instead of merging.
 
