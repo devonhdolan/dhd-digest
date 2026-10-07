@@ -10,6 +10,7 @@
   junk-report [D]  read-only: which links triage paid for that a free filter could drop
   retriage      queue this week's open candidates scored the old way for re-triage
   review-open   daily: open today's review issue (tick what doesn't belong)
+  review-prune F    keep only draft F's items in its weekly review listing
   review-record N   record the verdicts on closed review issue N
   assemble      weekly: build drafts/issue-NNN.md
   publish N     mark issue N's surviving (reviewed) links as published
@@ -67,14 +68,24 @@ def main():
     elif cmd == "assemble":
         from .editor.assemble import build
         from .render.markdown import write
-        from .review.daily import list_items
+        from .review.daily import relist
         draft = build()
         write(draft)
-        list_items(f"weekly:{draft['issue']}",
+        relist(f"weekly:{draft['issue']}",
                    [it["id"] for items in draft["sections"].values() for it in items])
     elif cmd == "review-open":
         from .review.daily import open_review
         open_review()
+    elif cmd == "review-prune":
+        # dhd review-prune drafts/issue-N.md : keep only that draft's items
+        # listed under weekly:N (repairs a listing from a superseded draft)
+        import re
+        from .render.markdown import parse_published
+        from .review.daily import prune
+        path = sys.argv[2]
+        n = int(re.search(r"issue-(\d+)\.md$", path).group(1))
+        ids = [it["id"] for it in parse_published(path)]
+        print(f"weekly:{n}: removed {prune(f'weekly:{n}', ids)} items not in {path}")
     elif cmd == "review-record":
         from .review.daily import close_review
         close_review(int(sys.argv[2]))
