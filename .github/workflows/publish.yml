@@ -1,0 +1,40 @@
+name: publish
+# Merging a weekly "Draft issue" PR means the issue has gone out: record it
+# as published (`dhd publish N`), so its links are never offered again and
+# what was kept and cut in review teaches triage. Merge only after sending.
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write   # posts the "published" comment
+
+jobs:
+  publish:
+    if: github.event.pull_request.merged && startsWith(github.event.pull_request.head.ref, 'draft/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run dhd init-db
+      - name: Publish the issue this PR drafted
+        run: |
+          file=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD -- 'drafts/issue-*.md' | head -1)
+          n=$(echo "$file" | sed -nE 's#drafts/issue-([0-9]+)\.md#\1#p')
+          if [ -z "$n" ]; then echo "no drafts/issue-N.md in this PR"; exit 1; fi
+          uv run dhd publish "$n" | tee out.txt
+          gh pr comment "$PR" --body "$(printf 'Recorded issue %s as published.\n\n```\n%s\n```' "$n" "$(cat out.txt)")"

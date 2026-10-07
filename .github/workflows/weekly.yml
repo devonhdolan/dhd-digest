@@ -48,6 +48,6 @@ jobs:
             - cut the dull ones
             - add asides (~8)
             - fill Listen / Read / Watch
-            Merging does not publish. After sending, run `dhd publish <issue-number>`
-            (the number is in the drafts/issue-N.md filename above).
+            Merge only after the issue has gone out: merging records it as
+            published (its links are marked used, and your cuts teach triage).
           add-paths: drafts/
